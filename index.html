@@ -3,33 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowBooks | Modern Bokföring</title>
+    <title>FlowBooks | Modern Bokföring för Konsulter</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <div id="auth-container" style="display: none;">
-        <div class="auth-box">
-            <h2 class="logo">FlowBooks</h2>
-            <p id="auth-error" class="error-message"></p>
-            <div class="input-group">
-                <label for="email">E-post</label>
-                <input type="email" id="email" placeholder="din@epost.se">
+    <!-- Landningssida och Autentiserings-vy -->
+    <div id="landing-container">
+        <div class="landing-grid">
+            <div class="landing-content">
+                <h1 class="landing-title">Bokföring för den moderna konsulten.</h1>
+                <p class="landing-subtitle">FlowBooks automatiserar din administration så att du kan fokusera på det du gör bäst. Lägg max 15 minuter i månaden på din bokföring.</p>
+                <ul class="features-list">
+                    <li>✓ Sömlös bankintegration i realtid</li>
+                    <li>✓ AI-driven kvitto- och fakturatolkning</li>
+                    <li>✓ Automatiserad moms och arbetsgivardeklaration</li>
+                    <li>✓ Byggd för enkelhet, snabbhet och kontroll</li>
+                </ul>
             </div>
-            <div class="input-group">
-                <label for="password">Lösenord</label>
-                <input type="password" id="password" placeholder="Minst 6 tecken">
-            </div>
-            <div class="auth-buttons">
-                <button id="login-btn" class="btn btn-primary">Logga in</button>
-                <button id="register-btn" class="btn btn-secondary">Registrera</button>
+
+            <!-- Inloggning och Registrerings-vy -->
+            <div id="auth-wrapper">
+                <div class="auth-box">
+                    <h2 class="auth-title">Logga in eller skapa konto</h2>
+                    <p id="auth-error" class="error-message"></p>
+                    <div class="input-group">
+                        <label for="email">E-post</label>
+                        <input type="email" id="email" placeholder="din@epost.se">
+                    </div>
+                    <div class="input-group">
+                        <label for="password">Lösenord</label>
+                        <input type="password" id="password" placeholder="Minst 6 tecken">
+                    </div>
+                    <div class="auth-buttons">
+                        <button id="login-btn" class="btn btn-primary">Logga in</button>
+                        <button id="register-btn" class="btn btn-secondary">Registrera</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
+
+    <!-- E-postverifierings-vy -->
     <div id="verify-email-container" style="display: none;">
         <div class="auth-box">
             <h2 class="logo">FlowBooks</h2>
@@ -41,6 +60,7 @@
     </div>
 
 
+    <!-- Huvudapplikationen (dold som standard) -->
     <div id="app-container" style="display: none;">
         <aside class="sidebar">
             <div class="sidebar-header">
@@ -72,15 +92,18 @@
                 <div class="header-right">
                     <button class="btn btn-primary">Ny faktura</button>
                     <div id="user-profile-icon" class="user-profile">
-                        </div>
+                        <!-- Genereras av JS -->
+                    </div>
                 </div>
             </header>
 
             <main id="main-view">
-                </main>
+                <!-- Innehåll genereras av app.js -->
+            </main>
         </div>
     </div>
 
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
