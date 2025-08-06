@@ -96,52 +96,55 @@ function renderPageContent(page) {
 
 async function renderDashboard() {
     const mainView = document.getElementById('main-view');
-    const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
-    const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
-    const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
-    const totalIncome = incomeSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
-    const totalExpense = expenseSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
-    const profit = totalIncome - totalExpense;
+    try {
+        const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
+        const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+        const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
+        const totalIncome = incomeSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+        const totalExpense = expenseSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+        const profit = totalIncome - totalExpense;
 
-    mainView.innerHTML = `
-        <div class="dashboard-grid">
-            <div class="card text-center"><h3>Totala Intäkter</h3><p class="metric-value green">${totalIncome.toFixed(2)} kr</p></div>
-            <div class="card text-center"><h3>Totala Utgifter</h3><p class="metric-value red">${totalExpense.toFixed(2)} kr</p></div>
-            <div class="card text-center"><h3>Resultat</h3><p class="metric-value ${profit >= 0 ? 'blue' : 'red'}">${profit.toFixed(2)} kr</p></div>
-        </div>`;
+        mainView.innerHTML = `
+            <div class="dashboard-grid">
+                <div class="card text-center"><h3>Totala Intäkter</h3><p class="metric-value green">${totalIncome.toFixed(2)} kr</p></div>
+                <div class="card text-center"><h3>Totala Utgifter</h3><p class="metric-value red">${totalExpense.toFixed(2)} kr</p></div>
+                <div class="card text-center"><h3>Resultat</h3><p class="metric-value ${profit >= 0 ? 'blue' : 'red'}">${profit.toFixed(2)} kr</p></div>
+            </div>`;
+    } catch (error) {
+        console.error("Fel vid laddning av dashboard:", error);
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
+    }
 }
 
 async function renderSummaryPage() {
     const mainView = document.getElementById('main-view');
-    const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
-    const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
-    const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
+    try {
+        const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
+        const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+        const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
 
-    const allTransactions = [];
-    incomeSnapshot.forEach(doc => allTransactions.push({ type: 'income', ...doc.data() }));
-    expenseSnapshot.forEach(doc => allTransactions.push({ type: 'expense', ...doc.data() }));
+        const allTransactions = [];
+        incomeSnapshot.forEach(doc => allTransactions.push({ type: 'income', ...doc.data() }));
+        expenseSnapshot.forEach(doc => allTransactions.push({ type: 'expense', ...doc.data() }));
 
-    allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date)); // Sortera efter datum, nyast först
+        allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    const rows = allTransactions.map(t => `
-        <tr class="transaction-row ${t.type}">
-            <td>${t.date}</td>
-            <td>${t.description}</td>
-            <td>${t.category}</td>
-            <td>${t.party || ''}</td>
-            <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">
-                ${t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)} kr
-            </td>
-        </tr>`).join('');
+        const rows = allTransactions.map(t => `
+            <tr class="transaction-row ${t.type}">
+                <td>${t.date}</td>
+                <td>${t.description}</td>
+                <td>${t.category}</td>
+                <td>${t.party || ''}</td>
+                <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">
+                    ${t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)} kr
+                </td>
+            </tr>`).join('');
 
-    mainView.innerHTML = `
-        <div class="card">
-            <h3 class="card-title">Transaktionshistorik</h3>
-            <table class="data-table">
-                <thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>Motpart</th><th class="text-right">Summa</th></tr></thead>
-                <tbody>${rows || '<tr><td colspan="5">Inga transaktioner att visa.</td></tr>'}</tbody>
-            </table>
-        </div>`;
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>Motpart</th><th class="text-right">Summa</th></tr></thead><tbody>${rows || '<tr><td colspan="5">Inga transaktioner att visa.</td></tr>'}</tbody></table></div>`;
+    } catch (error) {
+        console.error("Fel vid laddning av sammanfattning:", error);
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
+    }
 }
 
 
@@ -151,17 +154,20 @@ async function renderTransactionList(type) {
     const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
     const party = type === 'income' ? 'Klient' : 'Leverantör';
     
-    const q = query(collection(db, collectionName), where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
-    const snapshot = await getDocs(q);
+    try {
+        const q = query(collection(db, collectionName), where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
+        const snapshot = await getDocs(q);
 
-    const rows = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return `<tr><td>${data.date}</td><td>${data.description}</td><td>${data.category}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td></tr>`;
-    }).join('');
+        const rows = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return `<tr><td>${data.date}</td><td>${data.description}</td><td>${data.category}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td></tr>`;
+        }).join('');
 
-    mainView.innerHTML = `
-        <div class="card"><h3 class="card-title">${title}</h3>
-        <table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>${party}</th><th class="text-right">Summa</th></tr></thead><tbody>${rows || `<tr><td colspan="5">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>${party}</th><th class="text-right">Summa</th></tr></thead><tbody>${rows || `<tr><td colspan="5">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
+    } catch (error) {
+         console.error(`Fel vid laddning av ${collectionName}:`, error);
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera att databasindex är korrekt skapade för '${collectionName}'.</p></div>`;
+    }
 }
 
 function renderTransactionForm(type) {
@@ -170,13 +176,7 @@ function renderTransactionForm(type) {
     const partyLabel = type === 'income' ? 'Klient/Kund' : 'Leverantör';
     const today = new Date().toISOString().slice(0, 10);
 
-    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3>
-        <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${today}"></div>
-        <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text"></div>
-        <div class="input-group"><label>Kategori</label><input id="trans-cat" type="text"></div>
-        <div class="input-group"><label>${partyLabel}</label><input id="trans-party" type="text"></div>
-        <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00"></div>
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara Transaktion</button></div></div>`;
+    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3><div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${today}"></div><div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text"></div><div class="input-group"><label>Kategori</label><input id="trans-cat" type="text"></div><div class="input-group"><label>${partyLabel}</label><input id="trans-party" type="text"></div><div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00"></div><div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara Transaktion</button></div></div>`;
     
     document.getElementById('save-btn').addEventListener('click', () => handleSave(type));
     document.getElementById('cancel-btn').addEventListener('click', () => navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter'));
@@ -213,10 +213,7 @@ async function saveTransaction(type, data) {
 
 function showConfirmationModal(onConfirm) {
     const container = document.getElementById('confirmation-modal-container');
-    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3>
-        <p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p>
-        <div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div>
-        </div></div>`;
+    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
 
     document.getElementById('modal-confirm').onclick = () => { onConfirm(); container.innerHTML = ''; };
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
@@ -236,11 +233,7 @@ function updateProfileIcon() {
 }
 function renderSettingsPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="settings-grid">
-        <div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div>
-        <div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div>
-        <div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent. Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div>
-    </div>`;
+    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div><div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div><div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent. Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div></div>`;
     document.getElementById('save-pic').addEventListener('click', saveProfileImage);
     document.getElementById('save-company').addEventListener('click', saveCompanyInfo);
     document.getElementById('delete-account').addEventListener('click', deleteAccount);
