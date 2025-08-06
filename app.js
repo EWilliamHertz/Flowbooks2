@@ -1,12 +1,12 @@
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-storage.js";
 import { auth, db, storage } from './firebase-config.js';
 
 let currentUser;
 let userData;
 
-// ----- Huvudfunktioner -----
+// ----- HUVUDFUNKTIONER -----
 function main() {
     onAuthStateChanged(auth, async (user) => {
         if (user && user.emailVerified) {
@@ -17,6 +17,7 @@ function main() {
                 userData = userDocSnap.data();
                 initializeAppUI();
             } else {
+                console.error("Användardata saknas i Firestore. Loggar ut.");
                 await auth.signOut();
                 window.location.href = 'login.html';
             }
@@ -53,11 +54,14 @@ function setupEventListeners() {
 
 function navigateTo(page) {
     document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-    document.querySelector(`.sidebar-nav a[data-page="${page}"]`).classList.add('active');
+    const link = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
+    if (link) {
+        link.classList.add('active');
+    }
     renderPageContent(page);
 }
 
-// ----- Sid-rendering -----
+// ----- SID-RENDERING -----
 function renderPageContent(page) {
     const mainView = document.getElementById('main-view');
     const pageTitle = document.querySelector('.page-title');
@@ -68,12 +72,8 @@ function renderPageContent(page) {
     newItemBtn.style.display = 'none';
 
     switch (page) {
-        case 'Översikt':
-            renderDashboard();
-            break;
-        case 'Sammanfattning':
-            renderSummaryPage();
-            break;
+        case 'Översikt': renderDashboard(); break;
+        case 'Sammanfattning': renderSummaryPage(); break;
         case 'Intäkter':
             newItemBtn.textContent = 'Ny Intäkt';
             newItemBtn.style.display = 'block';
@@ -86,11 +86,8 @@ function renderPageContent(page) {
             newItemBtn.onclick = () => renderTransactionForm('expense');
             renderTransactionList('expense');
             break;
-        case 'Inställningar':
-            renderSettingsPage();
-            break;
-        default:
-            mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan hittades inte</h3></div>`;
+        case 'Inställningar': renderSettingsPage(); break;
+        default: mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan hittades inte</h3></div>`;
     }
 }
 
@@ -100,6 +97,7 @@ async function renderDashboard() {
         const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
         const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
         const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
+        
         const totalIncome = incomeSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
         const totalExpense = expenseSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
         const profit = totalIncome - totalExpense;
@@ -112,7 +110,7 @@ async function renderDashboard() {
             </div>`;
     } catch (error) {
         console.error("Fel vid laddning av dashboard:", error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Kontrollera att databasindex är korrekt skapade och att du har internetanslutning.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
     }
 }
 
@@ -123,38 +121,41 @@ async function renderSummaryPage() {
         const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
         const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
 
-        const allTransactions = [];
-        incomeSnapshot.forEach(doc => allTransactions.push({ type: 'income', ...doc.data() }));
-        expenseSnapshot.forEach(doc => allTransactions.push({ type: 'expense', ...doc.data() }));
+        let allTransactions = [];
+        incomeSnapshot.forEach(doc => allTransactions.push({ id: doc.id, type: 'income', ...doc.data() }));
+        expenseSnapshot.forEach(doc => allTransactions.push({ id: doc.id, type: 'expense', ...doc.data() }));
 
         allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         const rows = allTransactions.map(t => {
-            const receiptCell = t.type === 'expense'
-                ? (t.receiptUrl ? `<td><a href="${t.receiptUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>')
-                : '';
-            return `<tr class="transaction-row ${t.type}">
+            const actionCell = t.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${t.id}" data-type="${t.type}">Korrigera</button></td>`;
+            return `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}">
                 <td>${t.date}</td>
                 <td>${t.description}</td>
-                <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)} kr</td>
-                ${receiptCell}
-            </tr>`
+                <td class="text-right ${t.amount >= 0 ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>
+                ${actionCell}
+            </tr>`;
         }).join('');
 
-        const receiptHeader = '<th>Underlag</th>';
-        mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th>${receiptHeader}</tr></thead><tbody>${rows || '<tr><td colspan="4">Inga transaktioner att visa.</td></tr>'}</tbody></table></div>`;
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th><th>Åtgärd</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Inga transaktioner att visa.</td></tr>'}</tbody></table></div>`;
+        
+        mainView.querySelectorAll('.btn-correction').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const { id, type } = e.target.dataset;
+                renderCorrectionForm(type, id);
+            });
+        });
+
     } catch (error) {
         console.error("Fel vid laddning av sammanfattning:", error);
         mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
     }
 }
 
-
 async function renderTransactionList(type) {
     const mainView = document.getElementById('main-view');
     const collectionName = type === 'income' ? 'incomes' : 'expenses';
     const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
-    const party = type === 'income' ? 'Klient' : 'Leverantör';
     
     try {
         const q = query(collection(db, collectionName), where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
@@ -162,76 +163,99 @@ async function renderTransactionList(type) {
 
         const rows = snapshot.docs.map(doc => {
             const data = doc.data();
-            const receiptCell = type === 'expense' 
-                ? (data.receiptUrl ? `<td><a href="${data.receiptUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>') 
-                : '';
-            return `<tr><td>${data.date}</td><td>${data.description}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${receiptCell}</tr>`;
+            const actionCell = data.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${doc.id}" data-type="${type}">Korrigera</button></td>`;
+            return `<tr class="${data.isCorrection ? 'corrected' : ''}"><td>${data.date}</td><td>${data.description}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${actionCell}</tr>`;
         }).join('');
+
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th><th>Åtgärd</th></tr></thead><tbody>${rows || `<tr><td colspan="4">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
         
-        const receiptHeader = type === 'expense' ? '<th>Underlag</th>' : '';
-        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>${party}</th><th class="text-right">Summa</th>${receiptHeader}</tr></thead><tbody>${rows || `<tr><td colspan="5">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
+        mainView.querySelectorAll('.btn-correction').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const { id, type } = e.target.dataset;
+                renderCorrectionForm(type, id);
+            });
+        });
     } catch (error) {
         console.error(`Fel vid laddning av ${collectionName}:`, error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera att databasindex är korrekt skapade för '${collectionName}'.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera att databasindex för '${collectionName}' är korrekt.</p></div>`;
     }
 }
 
-function renderTransactionForm(type) {
+function renderTransactionForm(type, originalData = {}, isCorrection = false, originalId = null) {
     const mainView = document.getElementById('main-view');
-    const title = type === 'income' ? 'Registrera Ny Intäkt' : 'Registrera Ny Utgift';
-    const partyLabel = type === 'income' ? 'Klient/Kund' : 'Leverantör';
+    const title = isCorrection ? 'Korrigera Transaktion' : `Registrera Ny ${type === 'income' ? 'Intäkt' : 'Utgift'}`;
     const today = new Date().toISOString().slice(0, 10);
-    const fileUploadField = type === 'expense' ? `<div class="input-group"><label>Kvitto/Underlag (valfritt)</label><input id="trans-receipt" type="file" accept="image/*,.pdf"></div>` : '';
 
     mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3>
-        <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${today}"></div>
-        <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text"></div>
-        <div class="input-group"><label>Kategori</label><input id="trans-cat" type="text"></div>
-        <div class="input-group"><label>${partyLabel}</label><input id="trans-party" type="text"></div>
-        <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00"></div>
-        ${fileUploadField}
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara Transaktion</button></div></div>`;
+        ${isCorrection ? `<p class="correction-notice">Du skapar nu en rättelsepost för en tidigare transaktion. Den gamla posten nollställs och en ny, korrekt post skapas.</p>` : ''}
+        <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${originalData.date || today}"></div>
+        <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text" value="${originalData.description || ''}"></div>
+        <div class="input-group"><label>Kategori</label><input id="trans-cat" type="text" value="${originalData.category || ''}"></div>
+        <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00" value="${originalData.amount || ''}"></div>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">${isCorrection ? 'Spara Rättelse' : 'Spara'}</button></div></div>`;
     
-    document.getElementById('save-btn').addEventListener('click', () => handleSave(type));
+    document.getElementById('save-btn').addEventListener('click', () => {
+        const newData = {
+            date: document.getElementById('trans-date').value,
+            description: document.getElementById('trans-desc').value,
+            category: document.getElementById('trans-cat').value,
+            amount: parseFloat(document.getElementById('trans-amount').value) || 0,
+        };
+        if (isCorrection) {
+            handleCorrectionSave(type, originalId, originalData, newData);
+        } else {
+            handleSave(type, newData);
+        }
+    });
     document.getElementById('cancel-btn').addEventListener('click', () => navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter'));
 }
 
-// ----- Transaktionshantering & Bekräftelse -----
-function handleSave(type) {
-    const transactionData = {
-        userId: currentUser.uid, createdAt: new Date(),
-        date: document.getElementById('trans-date').value,
-        description: document.getElementById('trans-desc').value,
-        category: document.getElementById('trans-cat').value,
-        party: document.getElementById('trans-party').value,
-        amount: parseFloat(document.getElementById('trans-amount').value) || 0,
-        receiptUrl: null
-    };
+async function renderCorrectionForm(type, docId) {
+    const collectionName = type === 'income' ? 'incomes' : 'expenses';
+    const docRef = doc(db, collectionName, docId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        renderTransactionForm(type, docSnap.data(), true, docId);
+    } else {
+        alert("Kunde inte hitta den ursprungliga transaktionen.");
+    }
+}
 
+// ----- TRANSAKTIONSHANTERING & BEKRÄFTELSE -----
+function handleSave(type, data) {
+    const transactionData = { ...data, userId: currentUser.uid, createdAt: new Date(), isCorrection: false };
     if (!transactionData.date || !transactionData.description || transactionData.amount <= 0) {
         alert('Vänligen fyll i datum, beskrivning och en summa större än noll.');
         return;
     }
-    
-    const receiptFile = type === 'expense' ? document.getElementById('trans-receipt').files[0] : null;
+    showConfirmationModal(() => saveTransaction(type, transactionData));
+}
 
+async function handleCorrectionSave(type, originalId, originalData, newData) {
+    if (!newData.date || !newData.description || newData.amount <= 0) {
+        alert('Vänligen fyll i alla fält korrekt för den nya posten.');
+        return;
+    }
     showConfirmationModal(async () => {
-        const saveButton = document.getElementById('modal-confirm');
-        saveButton.disabled = true;
-        saveButton.textContent = 'Sparar...';
+        const batch = writeBatch(db);
+        const collectionName = type === 'income' ? 'incomes' : 'expenses';
 
-        if (receiptFile) {
-            try {
-                const storageRef = ref(storage, `receipts/${currentUser.uid}/${Date.now()}-${receiptFile.name}`);
-                await uploadBytes(storageRef, receiptFile);
-                transactionData.receiptUrl = await getDownloadURL(storageRef);
-            } catch (error) {
-                console.error("Fel vid uppladdning:", error);
-                alert("Kunde inte ladda upp kvittot, transaktionen avbröts.");
-                return;
-            }
-        }
-        await saveTransaction(type, transactionData);
+        // 1. Markera den ursprungliga posten som rättad
+        const originalDocRef = doc(db, collectionName, originalId);
+        batch.update(originalDocRef, { isCorrection: true });
+        
+        // 2. Skapa en spegelvänd transaktion för att nollställa den gamla
+        const reversalPost = { ...originalData, amount: -originalData.amount, isCorrection: true, correctedPostId: originalId, description: `Rättelse av: ${originalData.description}`, createdAt: new Date() };
+        const reversalDocRef = doc(collection(db, collectionName));
+        batch.set(reversalDocRef, reversalPost);
+
+        // 3. Skapa den nya, korrekta transaktionen
+        const newPost = { ...newData, userId: currentUser.uid, createdAt: new Date(), isCorrection: false, correctsPostId: originalId };
+        const newDocRef = doc(collection(db, collectionName));
+        batch.set(newDocRef, newPost);
+        
+        await batch.commit();
+        navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter');
     });
 }
 
@@ -241,22 +265,19 @@ async function saveTransaction(type, data) {
         await addDoc(collection(db, collectionName), data);
         navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter');
     } catch (error) {
-        alert("Kunde inte spara transaktionen. Försök igen.");
+        console.error("Fel vid sparning:", error);
+        alert("Kunde inte spara transaktionen.");
     }
 }
 
 function showConfirmationModal(onConfirm) {
     const container = document.getElementById('confirmation-modal-container');
-    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3>
-        <p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p>
-        <div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div>
-        </div></div>`;
-
-    document.getElementById('modal-confirm').onclick = () => onConfirm();
+    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
+    document.getElementById('modal-confirm').onclick = () => { onConfirm(); container.innerHTML = ''; };
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
 
-// ----- Inställningar -----
+// ----- INSTÄLLNINGAR -----
 function updateProfileIcon() {
     const profileIcon = document.getElementById('user-profile-icon');
     if (userData?.profileImageURL) {
@@ -281,11 +302,9 @@ async function saveProfileImage() {
     const fileInput = document.getElementById('profile-pic-upload');
     const file = fileInput.files[0];
     if (!file) return;
-
     const storageRef = ref(storage, `profile_images/${currentUser.uid}/${file.name}`);
     await uploadBytes(storageRef, file);
     const url = await getDownloadURL(storageRef);
-    
     await updateDoc(doc(db, 'users', currentUser.uid), { profileImageURL: url });
     userData.profileImageURL = url;
     updateProfileIcon();
@@ -295,7 +314,6 @@ async function saveProfileImage() {
 async function saveCompanyInfo() {
     const newName = document.getElementById('setting-company').value;
     if (!newName) return;
-    
     await updateDoc(doc(db, 'users', currentUser.uid), { companyName: newName });
     userData.companyName = newName;
     updateProfileIcon();
@@ -309,6 +327,7 @@ async function deleteAccount() {
             await auth.currentUser.delete();
             window.location.href = 'login.html';
         } catch (error) {
+            console.error("Fel vid borttagning av konto:", error);
             alert("Kunde inte ta bort kontot. Du kan behöva logga ut och in igen för att göra detta.");
         }
     }
