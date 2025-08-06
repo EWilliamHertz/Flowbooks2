@@ -1,13 +1,10 @@
-// Importera nödvändiga funktioner från Firebase SDK (modern v9-syntax)
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-import { getFirestore, doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-storage.js";
-import { app } from './firebase-config.js';
+// **KORRIGERING:** Importera endast nödvändiga funktioner från Firebase SDK
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-storage.js";
 
-// Initiera Firebase-tjänster
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+// **KORRIGERING:** Importera de färdig-initierade tjänsterna från din konfigurationsfil
+import { auth, db, storage } from './firebase-config.js';
 
 // Globala variabler
 let currentUser;
@@ -25,13 +22,11 @@ function main() {
                 userData = userDocSnap.data();
                 initializeAppUI();
             } else {
-                // Om användardata saknas i databasen, logga ut och skicka till login.
-                console.error("Hittade inte användardata i Firestore för en inloggad användare.");
+                console.error("Kunde inte hitta användardata i Firestore för en inloggad användare. Loggar ut.");
                 await auth.signOut();
                 window.location.href = 'login.html';
             }
         } else {
-            // Om ingen användare är inloggad eller verifierad, skicka till login-sidan
             window.location.href = 'login.html';
         }
     });
@@ -135,7 +130,7 @@ function renderDashboard(container) {
 
 async function renderExpenseList() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="card"><h3 class="card-title">Laddar utgifter...</h3></div>`; // Placeholder
+    mainView.innerHTML = `<div class="card"><p>Laddar utgifter...</p></div>`;
     
     const expensesCol = collection(db, 'expenses');
     const q = query(expensesCol, where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
