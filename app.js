@@ -568,7 +568,6 @@ async function deleteAccount() {
     if (prompt("Är du helt säker? Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
         try {
             await deleteDoc(doc(db, 'users', currentUser.uid));
-            // I en fullskalig app bör en Cloud Function radera all associerad data.
             await auth.currentUser.delete();
             showToast("Ditt konto har tagits bort.", "info");
             window.location.href = 'login.html';
