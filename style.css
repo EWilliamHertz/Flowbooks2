@@ -1,5 +1,5 @@
 /* =================================================================
-   FlowBooks CSS - Komplett och Rensad (Multi-Page App version)
+   FlowBooks CSS - Komplett och Rensad
    ================================================================= */
 
 /* --- 1. Grundläggande Setup, Reset och Variabler --- */
@@ -25,10 +25,11 @@ body { font-family: var(--font-family); background-color: var(--background-color
 .main-nav { display: flex; justify-content: space-between; align-items: center; }
 .nav-links { display: flex; align-items: center; gap: 1.5rem; }
 .nav-links a { text-decoration: none; color: var(--text-color-light); font-weight: 500; }
-.hero-section { padding: 6rem 0; }
-.hero-title { font-size: 3.5rem; font-weight: 800; line-height: 1.2; margin-bottom: 1rem; }
+.hero-section { padding: 4rem 0 6rem 0; }
+.hero-title { font-size: 3.2rem; font-weight: 800; line-height: 1.2; margin-bottom: 1rem; }
 .hero-subtitle { font-size: 1.2rem; color: var(--text-color-light); max-width: 650px; margin: 0 auto 2rem auto; }
 .landing-footer { padding: 2rem 0; text-align: center; color: var(--text-color-light); }
+.features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
 
 /* --- 3. Autentiserings-sidor --- */
 .auth-page { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
@@ -40,12 +41,13 @@ body { font-family: var(--font-family); background-color: var(--background-color
 .input-group input { width: 100%; padding: 0.8rem 1rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: 1rem; font-family: var(--font-family); }
 .error-message { color: #e74c3c; text-align: center; min-height: 20px; margin-bottom: 1rem; }
 .auth-switch { font-size: 0.9rem; margin-top: 1.5rem; text-align: center; }
+.auth-links { text-align: center; margin-top: 1rem; font-size: 0.9rem; }
 .logo-link { text-decoration: none; text-align: center; display: block; margin-bottom: 1rem; }
 
 /* --- 4. Huvudapplikationens Layout --- */
 #app-container { display: flex; min-height: 100vh; }
-.sidebar { width: var(--sidebar-width); background-color: var(--card-background); border-right: 1px solid var(--border-color); position: fixed; top: 0; left: -100%; height: 100vh; transition: left 0.3s ease-in-out; z-index: 1000; display: flex; flex-direction: column; }
-.main-content { flex-grow: 1; }
+.sidebar { width: var(--sidebar-width); background-color: var(--card-background); border-right: 1px solid var(--border-color); position: fixed; top: 0; left: 0; height: 100vh; display: flex; flex-direction: column; z-index: 1000; }
+.main-content { flex-grow: 1; margin-left: var(--sidebar-width); }
 .main-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background-color: var(--card-background); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 900; }
 .header-left, .header-right { display: flex; align-items: center; gap: 1rem; }
 .page-title { font-size: 1.5rem; font-weight: 600; }
@@ -75,40 +77,33 @@ main { padding: 1.5rem; }
 .btn-danger { background-color: #e74c3c; color: white; }
 .card { background-color: var(--card-background); border-radius: var(--border-radius); box-shadow: var(--box-shadow); padding: 1.5rem; border: 1px solid var(--border-color); }
 .card-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; }
+.card-danger { border-left: 4px solid #e74c3c; }
+.card-danger h3 { color: #e74c3c; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th, .data-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); }
-.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
 
-/* NYA KLASSER FÖR DASHBOARD */
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 1.5rem;
-}
-.card-full-width {
-    grid-column: 1 / -1;
-}
-.card-danger {
-    border-left: 4px solid #e74c3c;
-}
-.card-danger h3 {
-    color: #e74c3c;
-}
+/* --- 7. App-specifika Stilar --- */
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+.metric-value { font-size: 2rem; font-weight: 700; margin: 0; }
+.green { color: #2ecc71; }
+.red { color: #e74c3c; }
+.blue { color: #3498db; }
+.text-right { text-align: right; }
+.transaction-row.income { border-left: 4px solid #2ecc71; }
+.transaction-row.expense { border-left: 4px solid #e74c3c; }
 
+/* --- 8. Bekräftelsedialog (Modal) --- */
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+.modal-content { background: white; padding: 2rem; border-radius: var(--border-radius); box-shadow: 0 5px 15px rgba(0,0,0,0.3); max-width: 500px; width: 90%; }
+.modal-content h3 { margin-top: 0; margin-bottom: 1rem; }
+.modal-content p { margin-bottom: 1.5rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 1rem; }
 
-/* --- 7. Responsivitet --- */
+/* --- 9. Responsivitet --- */
 @media (max-width: 768px) {
-    .main-content { margin-left: 0 !important; }
+    .sidebar { left: -100%; }
+    .main-content { margin-left: 0; }
     .settings-grid { grid-template-columns: 1fr; }
-}
-@media (min-width: 769px) {
-    .sidebar { left: 0; }
-    .main-content { margin-left: var(--sidebar-width); }
-}
-
-/* NYTT TILLÄGG FÖR LANDNINGSSIDAN */
-.features-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1.5rem;
+    /* Lägg till en hamburgermeny-knapp och logik för att visa/dölja menyn i app.js om det behövs */
 }
