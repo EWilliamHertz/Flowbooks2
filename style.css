@@ -79,6 +79,23 @@ main { padding: 1.5rem; }
 .data-table th, .data-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border-color); }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 
+/* NYA KLASSER FÖR DASHBOARD */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+.card-full-width {
+    grid-column: 1 / -1;
+}
+.card-danger {
+    border-left: 4px solid #e74c3c;
+}
+.card-danger h3 {
+    color: #e74c3c;
+}
+
+
 /* --- 7. Responsivitet --- */
 @media (max-width: 768px) {
     .main-content { margin-left: 0 !important; }
