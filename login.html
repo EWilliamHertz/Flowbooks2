@@ -28,6 +28,8 @@
             
             <div class="auth-links">
                  <a href="#" id="forgot-password-link">Glömt lösenord?</a>
+                 <!-- NY LÄNK: Dold som standard, visas vid behov -->
+                 <a href="#" id="resend-verification-link" style="display: none; margin-left: 10px;">Skicka nytt bekräftelsemejl</a>
             </div>
             
             <p class="auth-switch">Har du inget konto? <a href="register.html">Skapa ett här</a></p>
@@ -35,10 +37,8 @@
     </div>
     
     <script type="module">
-        // Importera nödvändiga funktioner från Firebase SDK
-        import { signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        
-        // **KORRIGERING:** Importera det färdig-initierade 'auth'-objektet från din konfigurationsfil
+        // Importera nödvändiga funktioner från Firebase SDK, inklusive sendEmailVerification
+        import { signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
         import { auth } from './firebase-config.js';
 
         // Hämta element från DOM
@@ -47,6 +47,7 @@
         const passwordInput = document.getElementById('password');
         const messageEl = document.getElementById('auth-message');
         const forgotPasswordLink = document.getElementById('forgot-password-link');
+        const resendVerificationLink = document.getElementById('resend-verification-link');
 
         // Om en verifierad användare redan är inloggad, skicka direkt till appen
         onAuthStateChanged(auth, user => {
@@ -58,7 +59,8 @@
         // Funktion som hanterar inloggningslogiken
         const handleLogin = async () => {
             messageEl.textContent = '';
-            messageEl.style.color = '#e74c3c';
+            messageEl.style.color = '#e74c3c'; // Röd färg för fel
+            resendVerificationLink.style.display = 'none'; // Göm länken vid varje nytt försök
 
             const email = emailInput.value;
             const password = passwordInput.value;
@@ -70,15 +72,46 @@
 
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                
                 if (!userCredential.user.emailVerified) {
-                    messageEl.textContent = 'Verifiera din e-post innan du loggar in.';
+                    messageEl.textContent = 'Verifiera din e-post innan du loggar in. Klicka på länken för att skicka ett nytt mejl.';
+                    messageEl.style.color = '#f39c12'; // Gul färg för varning
+                    
+                    // Visa länken för att skicka nytt mejl
+                    resendVerificationLink.style.display = 'inline';
+                    
+                    // Klonar och ersätter länken för att undvika flera event listeners
+                    const newLink = resendVerificationLink.cloneNode(true);
+                    resendVerificationLink.parentNode.replaceChild(newLink, resendVerificationLink);
+
+                    // Lägg till event listener för att skicka nytt mejl
+                    newLink.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        try {
+                            await sendEmailVerification(userCredential.user);
+                            messageEl.textContent = `Ett nytt bekräftelsemejl har skickats till ${email}.`;
+                            messageEl.style.color = 'green'; // Grön färg för framgång
+                            newLink.style.display = 'none'; // Göm länken igen
+                        } catch (error) {
+                            console.error("Fel vid sändning av verifieringsmejl:", error);
+                            messageEl.textContent = 'Kunde inte skicka nytt bekräftelsemejl. Försök igen om en stund.';
+                            messageEl.style.color = '#e74c3c';
+                        }
+                    });
+
+                    // Logga ut den overifierade användaren så de inte fastnar
                     await auth.signOut();
                 } else {
+                    // Användaren är verifierad, skicka till appen
                     window.location.href = 'app.html';
                 }
             } catch (error) {
                 console.error("Inloggningsfel:", error.code);
-                messageEl.textContent = 'Fel e-post eller lösenord.';
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                    messageEl.textContent = 'Fel e-post eller lösenord.';
+                } else {
+                    messageEl.textContent = 'Ett okänt fel uppstod. Försök igen.';
+                }
             }
         };
 
@@ -86,6 +119,7 @@
         const handlePasswordReset = async (e) => {
             e.preventDefault();
             messageEl.textContent = '';
+            resendVerificationLink.style.display = 'none';
             
             const email = emailInput.value;
             if (!email) {
@@ -109,10 +143,9 @@
         loginBtn.addEventListener('click', handleLogin);
         forgotPasswordLink.addEventListener('click', handlePasswordReset);
         
-        // **NYTT:** Lägg till event listener för "Enter"-tangenten på lösenordsfältet
         passwordInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
-                event.preventDefault(); // Förhindra standardbeteende (som att skicka ett formulär)
+                event.preventDefault(); 
                 handleLogin();
             }
         });
