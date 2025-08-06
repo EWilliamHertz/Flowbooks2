@@ -112,7 +112,7 @@ async function renderDashboard() {
             </div>`;
     } catch (error) {
         console.error("Fel vid laddning av dashboard:", error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Kontrollera att databasindex är korrekt skapade och att du har internetanslutning.</p></div>`;
     }
 }
 
@@ -129,18 +129,20 @@ async function renderSummaryPage() {
 
         allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        const rows = allTransactions.map(t => `
-            <tr class="transaction-row ${t.type}">
+        const rows = allTransactions.map(t => {
+            const receiptCell = t.type === 'expense'
+                ? (t.receiptUrl ? `<td><a href="${t.receiptUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>')
+                : '';
+            return `<tr class="transaction-row ${t.type}">
                 <td>${t.date}</td>
                 <td>${t.description}</td>
-                <td>${t.category}</td>
-                <td>${t.party || ''}</td>
-                <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">
-                    ${t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)} kr
-                </td>
-            </tr>`).join('');
+                <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)} kr</td>
+                ${receiptCell}
+            </tr>`
+        }).join('');
 
-        mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>Motpart</th><th class="text-right">Summa</th></tr></thead><tbody>${rows || '<tr><td colspan="5">Inga transaktioner att visa.</td></tr>'}</tbody></table></div>`;
+        const receiptHeader = '<th>Underlag</th>';
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th>${receiptHeader}</tr></thead><tbody>${rows || '<tr><td colspan="4">Inga transaktioner att visa.</td></tr>'}</tbody></table></div>`;
     } catch (error) {
         console.error("Fel vid laddning av sammanfattning:", error);
         mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
@@ -160,12 +162,16 @@ async function renderTransactionList(type) {
 
         const rows = snapshot.docs.map(doc => {
             const data = doc.data();
-            return `<tr><td>${data.date}</td><td>${data.description}</td><td>${data.category}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td></tr>`;
+            const receiptCell = type === 'expense' 
+                ? (data.receiptUrl ? `<td><a href="${data.receiptUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>') 
+                : '';
+            return `<tr><td>${data.date}</td><td>${data.description}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${receiptCell}</tr>`;
         }).join('');
-
-        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>${party}</th><th class="text-right">Summa</th></tr></thead><tbody>${rows || `<tr><td colspan="5">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
+        
+        const receiptHeader = type === 'expense' ? '<th>Underlag</th>' : '';
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>${party}</th><th class="text-right">Summa</th>${receiptHeader}</tr></thead><tbody>${rows || `<tr><td colspan="5">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
     } catch (error) {
-         console.error(`Fel vid laddning av ${collectionName}:`, error);
+        console.error(`Fel vid laddning av ${collectionName}:`, error);
         mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera att databasindex är korrekt skapade för '${collectionName}'.</p></div>`;
     }
 }
@@ -175,8 +181,16 @@ function renderTransactionForm(type) {
     const title = type === 'income' ? 'Registrera Ny Intäkt' : 'Registrera Ny Utgift';
     const partyLabel = type === 'income' ? 'Klient/Kund' : 'Leverantör';
     const today = new Date().toISOString().slice(0, 10);
+    const fileUploadField = type === 'expense' ? `<div class="input-group"><label>Kvitto/Underlag (valfritt)</label><input id="trans-receipt" type="file" accept="image/*,.pdf"></div>` : '';
 
-    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3><div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${today}"></div><div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text"></div><div class="input-group"><label>Kategori</label><input id="trans-cat" type="text"></div><div class="input-group"><label>${partyLabel}</label><input id="trans-party" type="text"></div><div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00"></div><div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara Transaktion</button></div></div>`;
+    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3>
+        <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${today}"></div>
+        <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text"></div>
+        <div class="input-group"><label>Kategori</label><input id="trans-cat" type="text"></div>
+        <div class="input-group"><label>${partyLabel}</label><input id="trans-party" type="text"></div>
+        <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00"></div>
+        ${fileUploadField}
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara Transaktion</button></div></div>`;
     
     document.getElementById('save-btn').addEventListener('click', () => handleSave(type));
     document.getElementById('cancel-btn').addEventListener('click', () => navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter'));
@@ -190,7 +204,8 @@ function handleSave(type) {
         description: document.getElementById('trans-desc').value,
         category: document.getElementById('trans-cat').value,
         party: document.getElementById('trans-party').value,
-        amount: parseFloat(document.getElementById('trans-amount').value) || 0
+        amount: parseFloat(document.getElementById('trans-amount').value) || 0,
+        receiptUrl: null
     };
 
     if (!transactionData.date || !transactionData.description || transactionData.amount <= 0) {
@@ -198,7 +213,26 @@ function handleSave(type) {
         return;
     }
     
-    showConfirmationModal(() => saveTransaction(type, transactionData));
+    const receiptFile = type === 'expense' ? document.getElementById('trans-receipt').files[0] : null;
+
+    showConfirmationModal(async () => {
+        const saveButton = document.getElementById('modal-confirm');
+        saveButton.disabled = true;
+        saveButton.textContent = 'Sparar...';
+
+        if (receiptFile) {
+            try {
+                const storageRef = ref(storage, `receipts/${currentUser.uid}/${Date.now()}-${receiptFile.name}`);
+                await uploadBytes(storageRef, receiptFile);
+                transactionData.receiptUrl = await getDownloadURL(storageRef);
+            } catch (error) {
+                console.error("Fel vid uppladdning:", error);
+                alert("Kunde inte ladda upp kvittot, transaktionen avbröts.");
+                return;
+            }
+        }
+        await saveTransaction(type, transactionData);
+    });
 }
 
 async function saveTransaction(type, data) {
@@ -213,13 +247,16 @@ async function saveTransaction(type, data) {
 
 function showConfirmationModal(onConfirm) {
     const container = document.getElementById('confirmation-modal-container');
-    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
+    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3>
+        <p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p>
+        <div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div>
+        </div></div>`;
 
-    document.getElementById('modal-confirm').onclick = () => { onConfirm(); container.innerHTML = ''; };
+    document.getElementById('modal-confirm').onclick = () => onConfirm();
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
 
-// ----- Inställningar (oförändrad) -----
+// ----- Inställningar -----
 function updateProfileIcon() {
     const profileIcon = document.getElementById('user-profile-icon');
     if (userData?.profileImageURL) {
@@ -231,6 +268,7 @@ function updateProfileIcon() {
         profileIcon.textContent = initial;
     }
 }
+
 function renderSettingsPage() {
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div><div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div><div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent. Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div></div>`;
