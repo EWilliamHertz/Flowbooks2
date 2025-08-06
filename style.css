@@ -1,5 +1,5 @@
 /* =================================================================
-   FlowBooks CSS - Komplett och Rensad
+   FlowBooks CSS - Komplett och Rensad (Centrerad Design)
    ================================================================= */
 
 /* --- 1. Grundläggande Setup, Reset och Variabler --- */
@@ -34,31 +34,23 @@ body {
     line-height: 1.6;
 }
 
-/* --- 2. Landningssida & Autentisering --- */
+/* --- 2. Landningssida & Autentisering (NY CENTRERAD DESIGN) --- */
 #landing-container {
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background-color: var(--background-color);
     padding: 2rem;
 }
 
-.landing-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: center;
-    gap: 4rem;
+.landing-content-centered {
     width: 100%;
-    max-width: 1200px;
-}
-
-.landing-content {
-    padding-right: 2rem;
+    max-width: 550px;
+    text-align: center;
 }
 
 .landing-title {
-    font-size: 3rem;
+    font-size: 2.8rem;
     font-weight: 800;
     line-height: 1.2;
     color: var(--text-color);
@@ -69,47 +61,29 @@ body {
     font-size: 1.1rem;
     color: var(--text-color-light);
     line-height: 1.6;
-    margin-bottom: 2rem;
-}
-
-.features-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.features-list li {
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 1rem;
-    display: flex;
-    align-items: center;
+    margin-bottom: 2.5rem;
+    max-width: 480px; /* Gör texten lite smalare än boxen */
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #auth-wrapper {
     width: 100%;
-    max-width: 420px;
+    max-width: 420px; /* Begränsar bredden på själva rutan */
+    margin: 0 auto 2.5rem auto; /* Centrerar rutan och ger marginal under */
 }
 
 .auth-box {
     width: 100%;
-    max-width: 400px;
-    padding: 2.5rem;
+    padding: 2rem;
     background: var(--card-background);
     border-radius: var(--border-radius);
     box-shadow: var(--box-shadow);
     text-align: left;
 }
 
-.auth-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 1.5rem;
-}
-
 .input-group {
-    margin-bottom: 1.5rem;
-    text-align: left;
+    margin-bottom: 1.25rem;
 }
 
 .input-group label {
@@ -147,7 +121,25 @@ body {
     color: #e74c3c;
     margin-bottom: 1rem;
     min-height: 20px;
+    text-align: center;
 }
+
+.features-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.features-list li {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-color-light);
+}
+
 
 /* --- 3. E-postverifiering --- */
 #verify-email-container {
@@ -155,7 +147,6 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
-    background-color: var(--background-color);
 }
 
 #verify-email-container .auth-box {
@@ -191,7 +182,7 @@ body {
     border-right: 1px solid var(--border-color);
     position: fixed;
     top: 0;
-    left: -100%; /* Dold på mobil som standard */
+    left: -100%;
     height: 100vh;
     transition: left 0.3s ease-in-out;
     z-index: 1000;
@@ -278,11 +269,11 @@ main {
 
 .sidebar-footer {
     padding: 1.5rem;
-    margin-top: auto; /* Flyttar ner knappen */
+    margin-top: auto;
 }
 
 .menu-toggle {
-    display: none; /* Dold på desktop */
+    display: none;
     background: none;
     border: none;
     cursor: pointer;
@@ -304,13 +295,13 @@ main {
 
 /* --- 6. Återanvändbara Komponenter (Knappar, Kort) --- */
 .btn {
-    padding: 0.6rem 1.2rem;
+    padding: 0.75rem 1.2rem;
     border: none;
     border-radius: var(--border-radius);
     cursor: pointer;
-    font-weight: 500;
+    font-weight: 600;
     font-family: var(--font-family);
-    font-size: 0.95rem;
+    font-size: 1rem;
     transition: background-color 0.2s, transform 0.1s;
 }
 
@@ -379,64 +370,29 @@ main {
     border-radius: 2px;
 }
 
-.todo-list {
-    list-style: none;
-}
-.todo-list li {
-    margin-bottom: 0.75rem;
-}
-.todo-list a {
-    text-decoration: none;
-    color: var(--primary-color);
-    font-weight: 500;
-}
-.todo-list a:hover {
-    text-decoration: underline;
-}
-.todo-list li:last-child {
-    margin-bottom: 0;
-}
-
 /* --- 8. Responsivitet (Mobile-First) --- */
 @media (max-width: 992px) {
-    .landing-grid {
-        grid-template-columns: 1fr;
-        gap: 3rem;
-        text-align: center;
-    }
-    .landing-content {
-        padding-right: 0;
-        order: 1; /* Texten kommer först */
-    }
-    #auth-wrapper {
-        order: 2; /* Inloggningsrutan kommer sen */
-        margin: 0 auto;
-    }
-    .features-list {
-        display: inline-block;
-        text-align: left;
-    }
-    .landing-title {
-        font-size: 2.5rem;
-    }
+    /* Inga ändringar behövs här för den nya landningssidan, den är redan flexibel */
 }
 
-
 @media (max-width: 768px) {
+    .landing-title {
+        font-size: 2.2rem;
+    }
     .main-content {
         width: 100%;
     }
     .menu-toggle {
-        display: block; /* Visas på mobil */
+        display: block;
     }
     .page-title {
-        display: none; /* Dölj titel bredvid hamburgare för mer utrymme */
+        display: none;
     }
     main {
         padding: 1rem;
     }
     .dashboard-grid {
-        grid-template-columns: 1fr; /* Stapla kort på mobil */
+        grid-template-columns: 1fr;
     }
 }
 
@@ -449,6 +405,6 @@ main {
         margin-left: var(--sidebar-width);
     }
     .menu-toggle {
-        display: none; /* Dölj hamburgare på desktop */
+        display: none;
     }
 }
