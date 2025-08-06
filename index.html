@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | FlowBooks</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2 class="logo">FlowBooks</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="#" class="active">Översikt</a></li>
+                    <li><a href="#">Intäkter (Fakturor)</a></li>
+                    <li><a href="#">Utgifter (Kvitton)</a></li>
+                    <li><a href="#">Bank</a></li>
+                    <li><a href="#">Rapporter</a></li>
+                    <li><a href="#">Inställningar</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <button class="menu-toggle" id="menu-toggle-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
+                    <h1 class="page-title">Översikt</h1>
+                </div>
+                <div class="header-right">
+                    <button class="btn btn-primary">Ny faktura</button>
+                    <div class="user-profile">
+                        <img src="https://i.pravatar.cc/40" alt="Användarprofil" class="profile-avatar">
+                        </div>
+                </div>
+            </header>
+
+            <main id="main-view">
+                </main>
+        </div>
+    </div>
+
+    <script src="app.js" type="module"></script>
+</body>
+</html>
