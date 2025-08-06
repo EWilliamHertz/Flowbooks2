@@ -8,15 +8,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div id="app-container">
+    <div id="app-container" style="visibility: hidden;">
         <aside class="sidebar">
             <div class="sidebar-header"><h2 class="logo">FlowBooks</h2></div>
             <nav class="sidebar-nav">
                 <ul>
                     <li><a href="#" class="active" data-page="Översikt">Översikt</a></li>
+                    <li><a href="#" data-page="Sammanfattning">Sammanfattning</a></li>
                     <li><a href="#" data-page="Intäkter">Intäkter</a></li>
                     <li><a href="#" data-page="Utgifter">Utgifter</a></li>
-                    <li><a href="#" data-page="Rapporter">Rapporter</a></li>
                     <li><a href="#" data-page="Inställningar">Inställningar</a></li>
                 </ul>
             </nav>
@@ -25,9 +25,9 @@
             <header class="main-header">
                 <div class="header-left"><h1 class="page-title">Översikt</h1></div>
                 <div class="header-right">
-                    <button id="new-item-btn" class="btn btn-primary"></button>
+                    <button id="new-item-btn" class="btn btn-primary" style="display: none;"></button>
                     <div class="profile-container">
-                        <div id="user-profile-icon" class="user-profile">F</div>
+                        <div id="user-profile-icon" class="user-profile"></div>
                         <div id="profile-dropdown" class="profile-dropdown">
                             <a href="#" id="settings-link">Inställningar</a>
                             <a href="#" id="logout-btn">Logga ut</a>
@@ -38,6 +38,8 @@
             <main id="main-view"></main>
         </div>
     </div>
+
+    <div id="confirmation-modal-container"></div>
     
     <script src="app.js" type="module"></script>
 </body>
