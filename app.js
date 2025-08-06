@@ -18,15 +18,15 @@ const db = firebase.firestore();
 
 class FlowBooksApp {
     constructor() {
-        // Auth-element
-        this.authContainer = document.getElementById('auth-container');
+        // Landningssida & Auth-element
+        this.landingContainer = document.getElementById('landing-container');
         this.emailInput = document.getElementById('email');
         this.passwordInput = document.getElementById('password');
         this.loginButton = document.getElementById('login-btn');
         this.registerButton = document.getElementById('register-btn');
         this.authError = document.getElementById('auth-error');
 
-        // Verify-element (NY)
+        // Verify-element
         this.verifyEmailContainer = document.getElementById('verify-email-container');
         this.verificationEmailAddress = document.getElementById('verification-email-address');
         this.backToLoginButton = document.getElementById('back-to-login-btn');
@@ -43,21 +43,26 @@ class FlowBooksApp {
     }
 
     init() {
+        // Sätt upp alla event listeners
         this.loginButton.addEventListener('click', () => this.login());
         this.registerButton.addEventListener('click', () => this.register());
         this.logoutButton.addEventListener('click', () => this.logout());
         this.menuToggleButton.addEventListener('click', () => this.toggleSidebar());
         this.backToLoginButton.addEventListener('click', () => this.showAuth());
 
+        // Lyssna på ändringar i användarens inloggningsstatus
         auth.onAuthStateChanged(user => {
             if (user) {
+                // Användare är inloggad, kolla om e-post är verifierad
                 if (user.emailVerified) {
                     this.showApp();
                     this.renderDashboard(user);
                 } else {
+                    // Användaren är inte verifierad
                     this.showVerification(user.email);
                 }
             } else {
+                // Användare är utloggad
                 this.showAuth();
             }
         });
@@ -111,7 +116,7 @@ class FlowBooksApp {
 
     // --- Funktioner för att visa/dölja vyer ---
     hideAllViews() {
-        this.authContainer.style.display = 'none';
+        this.landingContainer.style.display = 'none';
         this.appContainer.style.display = 'none';
         this.verifyEmailContainer.style.display = 'none';
     }
@@ -123,7 +128,7 @@ class FlowBooksApp {
 
     showAuth() {
         this.hideAllViews();
-        this.authContainer.style.display = 'flex';
+        this.landingContainer.style.display = 'flex';
     }
 
     showVerification(email) {
@@ -179,6 +184,7 @@ class FlowBooksApp {
     }
 }
 
+// Starta applikationen när DOM är laddat
 document.addEventListener('DOMContentLoaded', () => {
     new FlowBooksApp();
 });
