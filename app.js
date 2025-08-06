@@ -1,28 +1,22 @@
-// **KORRIGERING:** Importera endast nödvändiga funktioner från Firebase SDK
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
 import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-storage.js";
-
-// **KORRIGERING:** Importera de färdig-initierade tjänsterna från din konfigurationsfil
 import { auth, db, storage } from './firebase-config.js';
 
-// Globala variabler
 let currentUser;
 let userData;
 
-// Huvudfunktion som körs när appen startar
+// ----- Huvudfunktioner -----
 function main() {
     onAuthStateChanged(auth, async (user) => {
         if (user && user.emailVerified) {
             currentUser = user;
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
-
             if (userDocSnap.exists()) {
                 userData = userDocSnap.data();
                 initializeAppUI();
             } else {
-                console.error("Kunde inte hitta användardata i Firestore för en inloggad användare. Loggar ut.");
                 await auth.signOut();
                 window.location.href = 'login.html';
             }
@@ -32,7 +26,6 @@ function main() {
     });
 }
 
-// Initierar gränssnittet efter att data har laddats
 function initializeAppUI() {
     updateProfileIcon();
     setupEventListeners();
@@ -40,6 +33,196 @@ function initializeAppUI() {
     document.getElementById('app-container').style.visibility = 'visible';
 }
 
+function setupEventListeners() {
+    document.querySelector('.sidebar-nav').addEventListener('click', e => {
+        if (e.target.tagName === 'A' && e.target.dataset.page) {
+            e.preventDefault();
+            navigateTo(e.target.dataset.page);
+        }
+    });
+    document.getElementById('user-profile-icon').addEventListener('click', () => {
+        document.getElementById('profile-dropdown').classList.toggle('show');
+    });
+    document.getElementById('logout-btn').addEventListener('click', () => auth.signOut());
+    document.getElementById('settings-link').addEventListener('click', e => {
+        e.preventDefault();
+        document.getElementById('profile-dropdown').classList.remove('show');
+        navigateTo('Inställningar');
+    });
+}
+
+function navigateTo(page) {
+    document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
+    document.querySelector(`.sidebar-nav a[data-page="${page}"]`).classList.add('active');
+    renderPageContent(page);
+}
+
+// ----- Sid-rendering -----
+function renderPageContent(page) {
+    const mainView = document.getElementById('main-view');
+    const pageTitle = document.querySelector('.page-title');
+    const newItemBtn = document.getElementById('new-item-btn');
+    
+    pageTitle.textContent = page;
+    mainView.innerHTML = `<div class="card"><p>Laddar...</p></div>`;
+    newItemBtn.style.display = 'none';
+
+    switch (page) {
+        case 'Översikt':
+            renderDashboard();
+            break;
+        case 'Sammanfattning':
+            renderSummaryPage();
+            break;
+        case 'Intäkter':
+            newItemBtn.textContent = 'Ny Intäkt';
+            newItemBtn.style.display = 'block';
+            newItemBtn.onclick = () => renderTransactionForm('income');
+            renderTransactionList('income');
+            break;
+        case 'Utgifter':
+            newItemBtn.textContent = 'Ny Utgift';
+            newItemBtn.style.display = 'block';
+            newItemBtn.onclick = () => renderTransactionForm('expense');
+            renderTransactionList('expense');
+            break;
+        case 'Inställningar':
+            renderSettingsPage();
+            break;
+        default:
+            mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan hittades inte</h3></div>`;
+    }
+}
+
+async function renderDashboard() {
+    const mainView = document.getElementById('main-view');
+    const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
+    const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+    const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
+    const totalIncome = incomeSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+    const totalExpense = expenseSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+    const profit = totalIncome - totalExpense;
+
+    mainView.innerHTML = `
+        <div class="dashboard-grid">
+            <div class="card text-center"><h3>Totala Intäkter</h3><p class="metric-value green">${totalIncome.toFixed(2)} kr</p></div>
+            <div class="card text-center"><h3>Totala Utgifter</h3><p class="metric-value red">${totalExpense.toFixed(2)} kr</p></div>
+            <div class="card text-center"><h3>Resultat</h3><p class="metric-value ${profit >= 0 ? 'blue' : 'red'}">${profit.toFixed(2)} kr</p></div>
+        </div>`;
+}
+
+async function renderSummaryPage() {
+    const mainView = document.getElementById('main-view');
+    const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
+    const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+    const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
+
+    const allTransactions = [];
+    incomeSnapshot.forEach(doc => allTransactions.push({ type: 'income', ...doc.data() }));
+    expenseSnapshot.forEach(doc => allTransactions.push({ type: 'expense', ...doc.data() }));
+
+    allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date)); // Sortera efter datum, nyast först
+
+    const rows = allTransactions.map(t => `
+        <tr class="transaction-row ${t.type}">
+            <td>${t.date}</td>
+            <td>${t.description}</td>
+            <td>${t.category}</td>
+            <td>${t.party || ''}</td>
+            <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">
+                ${t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)} kr
+            </td>
+        </tr>`).join('');
+
+    mainView.innerHTML = `
+        <div class="card">
+            <h3 class="card-title">Transaktionshistorik</h3>
+            <table class="data-table">
+                <thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>Motpart</th><th class="text-right">Summa</th></tr></thead>
+                <tbody>${rows || '<tr><td colspan="5">Inga transaktioner att visa.</td></tr>'}</tbody>
+            </table>
+        </div>`;
+}
+
+
+async function renderTransactionList(type) {
+    const mainView = document.getElementById('main-view');
+    const collectionName = type === 'income' ? 'incomes' : 'expenses';
+    const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
+    const party = type === 'income' ? 'Klient' : 'Leverantör';
+    
+    const q = query(collection(db, collectionName), where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
+    const snapshot = await getDocs(q);
+
+    const rows = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return `<tr><td>${data.date}</td><td>${data.description}</td><td>${data.category}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td></tr>`;
+    }).join('');
+
+    mainView.innerHTML = `
+        <div class="card"><h3 class="card-title">${title}</h3>
+        <table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>${party}</th><th class="text-right">Summa</th></tr></thead><tbody>${rows || `<tr><td colspan="5">Inga transaktioner registrerade.</td></tr>`}</tbody></table></div>`;
+}
+
+function renderTransactionForm(type) {
+    const mainView = document.getElementById('main-view');
+    const title = type === 'income' ? 'Registrera Ny Intäkt' : 'Registrera Ny Utgift';
+    const partyLabel = type === 'income' ? 'Klient/Kund' : 'Leverantör';
+    const today = new Date().toISOString().slice(0, 10);
+
+    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3>
+        <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${today}"></div>
+        <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text"></div>
+        <div class="input-group"><label>Kategori</label><input id="trans-cat" type="text"></div>
+        <div class="input-group"><label>${partyLabel}</label><input id="trans-party" type="text"></div>
+        <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00"></div>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara Transaktion</button></div></div>`;
+    
+    document.getElementById('save-btn').addEventListener('click', () => handleSave(type));
+    document.getElementById('cancel-btn').addEventListener('click', () => navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter'));
+}
+
+// ----- Transaktionshantering & Bekräftelse -----
+function handleSave(type) {
+    const transactionData = {
+        userId: currentUser.uid, createdAt: new Date(),
+        date: document.getElementById('trans-date').value,
+        description: document.getElementById('trans-desc').value,
+        category: document.getElementById('trans-cat').value,
+        party: document.getElementById('trans-party').value,
+        amount: parseFloat(document.getElementById('trans-amount').value) || 0
+    };
+
+    if (!transactionData.date || !transactionData.description || transactionData.amount <= 0) {
+        alert('Vänligen fyll i datum, beskrivning och en summa större än noll.');
+        return;
+    }
+    
+    showConfirmationModal(() => saveTransaction(type, transactionData));
+}
+
+async function saveTransaction(type, data) {
+    const collectionName = type === 'income' ? 'incomes' : 'expenses';
+    try {
+        await addDoc(collection(db, collectionName), data);
+        navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter');
+    } catch (error) {
+        alert("Kunde inte spara transaktionen. Försök igen.");
+    }
+}
+
+function showConfirmationModal(onConfirm) {
+    const container = document.getElementById('confirmation-modal-container');
+    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3>
+        <p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p>
+        <div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div>
+        </div></div>`;
+
+    document.getElementById('modal-confirm').onclick = () => { onConfirm(); container.innerHTML = ''; };
+    document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
+}
+
+// ----- Inställningar (oförändrad) -----
 function updateProfileIcon() {
     const profileIcon = document.getElementById('user-profile-icon');
     if (userData?.profileImageURL) {
@@ -51,139 +234,12 @@ function updateProfileIcon() {
         profileIcon.textContent = initial;
     }
 }
-
-function setupEventListeners() {
-    document.querySelector('.sidebar-nav').addEventListener('click', e => {
-        if (e.target.tagName === 'A' && e.target.dataset.page) {
-            e.preventDefault();
-            navigateTo(e.target.dataset.page);
-        }
-    });
-
-    document.getElementById('user-profile-icon').addEventListener('click', () => {
-        document.getElementById('profile-dropdown').classList.toggle('show');
-    });
-
-    document.getElementById('logout-btn').addEventListener('click', () => {
-        auth.signOut();
-    });
-
-    document.getElementById('settings-link').addEventListener('click', e => {
-        e.preventDefault();
-        document.getElementById('profile-dropdown').classList.remove('show');
-        navigateTo('Inställningar');
-    });
-}
-
-// Navigerar mellan olika vyer i appen
-function navigateTo(page) {
-    document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-    document.querySelector(`.sidebar-nav a[data-page="${page}"]`).classList.add('active');
-    renderPageContent(page);
-}
-
-// Renderar innehållet för den valda vyn
-function renderPageContent(page) {
-    const mainView = document.getElementById('main-view');
-    const pageTitle = document.querySelector('.page-title');
-    const newItemBtn = document.getElementById('new-item-btn');
-    
-    pageTitle.textContent = page;
-    mainView.innerHTML = '';
-    newItemBtn.style.display = 'none';
-
-    switch (page) {
-        case 'Översikt':
-            renderDashboard(mainView);
-            break;
-        case 'Utgifter':
-            newItemBtn.textContent = 'Ny Utgift';
-            newItemBtn.style.display = 'block';
-            newItemBtn.onclick = () => renderExpenseForm();
-            renderExpenseList();
-            break;
-        case 'Inställningar':
-            renderSettingsPage();
-            break;
-        default:
-            mainView.innerHTML = `<div class="card"><h3 class="card-title">Under utveckling</h3><p>Sidan '${page}' och dess funktioner är under utveckling.</p></div>`;
-    }
-}
-
-function renderDashboard(container) {
-    container.innerHTML = `
-        <div class="dashboard-grid">
-            <div class="card card-full-width">
-                <h3 class="card-title">Välkommen, ${userData.companyName}!</h3>
-                <p>Här är din översikt. Utforska funktionerna i menyn för att hantera din bokföring på 15 minuter i månaden.</p>
-            </div>
-            <div class="card">
-                <h3 class="card-title">Registrera Utgifter</h3>
-                <p>Gå till 'Utgifter' för att lägga till kvitton och andra utlägg. Snart kan du ladda upp bilder direkt för automatisk AI-tolkning.</p>
-            </div>
-            <div class="card">
-                <h3 class="card-title">Hantera Inställningar</h3>
-                <p>Gå till 'Inställningar' för att uppdatera ditt företagsnamn, ladda upp en logotyp eller hantera ditt konto.</p>
-            </div>
-        </div>`;
-}
-
-async function renderExpenseList() {
-    const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="card"><p>Laddar utgifter...</p></div>`;
-    
-    const expensesCol = collection(db, 'expenses');
-    const q = query(expensesCol, where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
-    const snapshot = await getDocs(q);
-    
-    let rows = '';
-    snapshot.forEach(doc => {
-        const data = doc.data();
-        rows += `<tr><td>${data.date}</td><td>${data.description}</td><td>${Number(data.amount).toFixed(2)} kr</td></tr>`;
-    });
-
-    const tableHTML = `<div class="card"><h3 class="card-title">Registrerade Utgifter</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Belopp</th></tr></thead><tbody>${rows || '<tr><td colspan="3">Inga utgifter registrerade. Klicka på "Ny Utgift" för att börja.</td></tr>'}</tbody></table></div>`;
-    mainView.innerHTML = tableHTML;
-}
-
-function renderExpenseForm() {
-    const mainView = document.getElementById('main-view');
-    const today = new Date().toISOString().slice(0, 10);
-    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;">
-        <h3 class="card-title">Registrera Ny Utgift</h3>
-        <div class="input-group"><label for="expense-date">Datum</label><input id="expense-date" type="date" value="${today}"></div>
-        <div class="input-group"><label for="expense-desc">Beskrivning</label><input id="expense-desc" type="text" placeholder="t.ex. Kaffe med kund"></div>
-        <div class="input-group"><label for="expense-amount">Belopp (SEK)</label><input id="expense-amount" type="number" placeholder="150.00"></div>
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-             <button id="cancel-expense" class="btn btn-secondary">Avbryt</button>
-             <button id="save-expense" class="btn btn-primary">Spara Utgift</button>
-        </div>
-    </div>`;
-    document.getElementById('save-expense').addEventListener('click', saveExpense);
-    document.getElementById('cancel-expense').addEventListener('click', () => navigateTo('Utgifter'));
-}
-
-async function saveExpense() {
-    const expense = {
-        userId: currentUser.uid,
-        date: document.getElementById('expense-date').value,
-        description: document.getElementById('expense-desc').value,
-        amount: parseFloat(document.getElementById('expense-amount').value) || 0
-    };
-    if (!expense.date || !expense.description || expense.amount <= 0) {
-        alert('Alla fält måste vara korrekt ifyllda.');
-        return;
-    }
-    await addDoc(collection(db, 'expenses'), expense);
-    navigateTo('Utgifter');
-}
-
 function renderSettingsPage() {
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = `<div class="settings-grid">
         <div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div>
         <div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div>
-        <div class="card card-danger"><h3>Ta bort konto</h3><p>All din data, inklusive utgifter och inställningar, raderas permanent. Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div>
+        <div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent. Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div>
     </div>`;
     document.getElementById('save-pic').addEventListener('click', saveProfileImage);
     document.getElementById('save-company').addEventListener('click', saveCompanyInfo);
@@ -199,9 +255,7 @@ async function saveProfileImage() {
     await uploadBytes(storageRef, file);
     const url = await getDownloadURL(storageRef);
     
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    await updateDoc(userDocRef, { profileImageURL: url });
-
+    await updateDoc(doc(db, 'users', currentUser.uid), { profileImageURL: url });
     userData.profileImageURL = url;
     updateProfileIcon();
     alert('Profilbilden är uppdaterad!');
@@ -211,23 +265,19 @@ async function saveCompanyInfo() {
     const newName = document.getElementById('setting-company').value;
     if (!newName) return;
     
-    const userDocRef = doc(db, 'users', currentUser.uid);
-    await updateDoc(userDocRef, { companyName: newName });
-
+    await updateDoc(doc(db, 'users', currentUser.uid), { companyName: newName });
     userData.companyName = newName;
     updateProfileIcon();
     alert('Företagsinformationen är sparad!');
 }
 
 async function deleteAccount() {
-    if (prompt("Är du helt säker? Detta raderar all din data. Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
+    if (prompt("Är du helt säker? Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
         try {
             await deleteDoc(doc(db, 'users', currentUser.uid));
-            await currentUser.delete();
-            alert("Ditt konto har tagits bort.");
+            await auth.currentUser.delete();
             window.location.href = 'login.html';
         } catch (error) {
-            console.error("Fel vid borttagning av konto:", error);
             alert("Kunde inte ta bort kontot. Du kan behöva logga ut och in igen för att göra detta.");
         }
     }
