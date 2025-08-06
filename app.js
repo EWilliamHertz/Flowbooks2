@@ -1,5 +1,6 @@
 // app.js - Hanterar all logik för app.html
 
+
 const firebaseConfig = {
     apiKey: "AIzaSyDGamRgGYt-Bl2Mj0znqAG7uFWM9TC0VgU",
     authDomain: "flowbooks-73cd9.firebaseapp.com",
