@@ -13,11 +13,11 @@ function main() {
             currentUser = user;
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
+            if (userDocSnap.exists() && userDocSnap.data().companyId) {
                 userData = userDocSnap.data();
                 initializeAppUI();
             } else {
-                console.error("Användardata saknas i Firestore. Loggar ut.");
+                console.error("Användardata eller companyId saknas i Firestore. Loggar ut.");
                 await auth.signOut();
                 window.location.href = 'login.html';
             }
@@ -95,8 +95,8 @@ function renderPageContent(page) {
 async function renderDashboard() {
     const mainView = document.getElementById('main-view');
     try {
-        const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
-        const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+        const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId));
+        const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId));
         const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
         
         const totalIncome = incomeSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
@@ -111,15 +111,15 @@ async function renderDashboard() {
             </div>`;
     } catch (error) {
         console.error("Fel vid laddning av dashboard:", error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Ett databasfel inträffade. Kontrollera att dina databasindex är korrekt skapade och att du har behörighet.</p></div>`;
     }
 }
 
 async function renderSummaryPage() {
     const mainView = document.getElementById('main-view');
     try {
-        const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
-        const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+        const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId));
+        const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId));
         const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
 
         let allTransactions = [];
@@ -133,7 +133,7 @@ async function renderSummaryPage() {
             return `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}">
                 <td>${t.date}</td>
                 <td>${t.description}</td>
-                <td class="text-right ${t.amount >= 0 ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>
+                <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>
                 ${actionCell}
             </tr>`;
         }).join('');
@@ -149,7 +149,7 @@ async function renderSummaryPage() {
 
     } catch (error) {
         console.error("Fel vid laddning av sammanfattning:", error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Kontrollera att databasindex är korrekt skapade.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Ett databasfel inträffade. Kontrollera dina databasindex.</p></div>`;
     }
 }
 
@@ -159,7 +159,7 @@ async function renderTransactionList(type) {
     const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
     
     try {
-        const q = query(collection(db, collectionName), where('userId', '==', currentUser.uid), orderBy('date', 'desc'));
+        const q = query(collection(db, collectionName), where('companyId', '==', userData.companyId), orderBy('date', 'desc'));
         const snapshot = await getDocs(q);
 
         const rows = snapshot.docs.map(doc => {
@@ -169,14 +169,14 @@ async function renderTransactionList(type) {
             return `<tr class="${data.isCorrection ? 'corrected' : ''}"><td>${data.date}</td><td>${data.description}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${attachmentCell}<td>${actionCell}</td></tr>`;
         }).join('');
 
-        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th><th>Underlag</th><th>Åtgärd</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th><th>Underlag</th><th>Åtgärd</th></tr></thead><tbody>${rows || `<tr><td colspan="5">Inga ${type === 'income' ? 'intäkter' : 'utgifter'} att visa.</td></tr>`}</tbody></table></div>`;
         
         mainView.querySelectorAll('.btn-correction').forEach(btn => {
             btn.addEventListener('click', (e) => renderCorrectionForm(e.target.dataset.type, e.target.dataset.id));
         });
     } catch (error) {
         console.error(`Fel vid laddning av ${collectionName}:`, error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera databasindex för '${collectionName}'.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera databasindex för '${collectionName}'. Fel: ${error.message}</p></div>`;
     }
 }
 
@@ -254,8 +254,8 @@ async function generateVatReport() {
     }
     resultDiv.innerHTML = `<p>Beräknar...</p>`;
 
-    const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid), where('date', '>=', startDate), where('date', '<=', endDate));
-    const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid), where('date', '>=', startDate), where('date', '<=', endDate));
+    const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId), where('date', '>=', startDate), where('date', '<=', endDate));
+    const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId), where('date', '>=', startDate), where('date', '<=', endDate));
     const [incomeSnap, expenseSnap] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
 
     const totalSales = incomeSnap.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
@@ -279,8 +279,8 @@ async function generateVatReport() {
 async function exportSieFile() {
     alert("Skapar SIE4-fil... Detta kan ta en stund.");
     const year = new Date().getFullYear();
-    const incomeQuery = query(collection(db, 'incomes'), where('userId', '==', currentUser.uid));
-    const expenseQuery = query(collection(db, 'expenses'), where('userId', '==', currentUser.uid));
+    const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId));
+    const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId));
     const [incomeSnap, expenseSnap] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
 
     let transactions = [];
@@ -325,7 +325,14 @@ async function exportSieFile() {
 // ----- TRANSAKTIONSHANTERING -----
 function handleSave(type, data) {
     const attachmentFile = document.getElementById('trans-attachment').files[0];
-    const transactionData = { ...data, userId: currentUser.uid, createdAt: new Date(), isCorrection: false, attachmentUrl: null };
+    const transactionData = { 
+        ...data, 
+        userId: currentUser.uid, 
+        companyId: userData.companyId, // KORRIGERING: Lägg till companyId
+        createdAt: new Date(), 
+        isCorrection: false, 
+        attachmentUrl: null 
+    };
     
     if (!transactionData.date || !transactionData.description || transactionData.amount === 0) {
         alert('Vänligen fyll i datum, beskrivning och en summa.');
@@ -369,7 +376,7 @@ async function handleCorrectionSave(type, originalId, originalData, newData) {
         const reversalDocRef = doc(collection(db, collectionName));
         batch.set(reversalDocRef, reversalPost);
 
-        const newPost = { ...newData, userId: currentUser.uid, createdAt: new Date(), isCorrection: false, correctsPostId: originalId };
+        const newPost = { ...newData, userId: currentUser.uid, companyId: userData.companyId, createdAt: new Date(), isCorrection: false, correctsPostId: originalId };
         const newDocRef = doc(collection(db, collectionName));
         batch.set(newDocRef, newPost);
         
@@ -392,7 +399,10 @@ async function saveTransaction(type, data) {
 function showConfirmationModal(onConfirm) {
     const container = document.getElementById('confirmation-modal-container');
     container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
-    document.getElementById('modal-confirm').onclick = () => onConfirm();
+    document.getElementById('modal-confirm').onclick = () => {
+        onConfirm();
+        container.innerHTML = ''; // Stäng modalen direkt
+    };
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
 
@@ -442,6 +452,8 @@ async function saveCompanyInfo() {
 async function deleteAccount() {
     if (prompt("Är du helt säker? Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
         try {
+            // Detta är en förenklad borttagning. I en riktig app behöver du en Cloud Function
+            // för att radera all associerad data (transaktioner, etc.) på ett säkert sätt.
             await deleteDoc(doc(db, 'users', currentUser.uid));
             await auth.currentUser.delete();
             window.location.href = 'login.html';
