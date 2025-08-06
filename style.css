@@ -346,3 +346,30 @@ main {
     align-items: center;
     font-weight: 600;
 }
+
+/* --- Lägg till detta i slutet av din style.css --- */
+
+#verify-email-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: var(--background-color);
+}
+
+#verify-email-container .auth-box h3 {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+#verify-email-container .auth-box p {
+    margin-bottom: 1rem;
+    color: var(--text-color-light);
+    line-height: 1.5;
+}
+
+.info-text {
+    font-size: 0.9rem;
+    color: #999;
+}
