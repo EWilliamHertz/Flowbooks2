@@ -26,6 +26,11 @@ class FlowBooksApp {
         this.registerButton = document.getElementById('register-btn');
         this.authError = document.getElementById('auth-error');
 
+        // Verify-element (NY)
+        this.verifyEmailContainer = document.getElementById('verify-email-container');
+        this.verificationEmailAddress = document.getElementById('verification-email-address');
+        this.backToLoginButton = document.getElementById('back-to-login-btn');
+
         // App-element
         this.appContainer = document.getElementById('app-container');
         this.mainView = document.getElementById('main-view');
@@ -38,32 +43,38 @@ class FlowBooksApp {
     }
 
     init() {
-        // Lyssna på Auth-knappar
         this.loginButton.addEventListener('click', () => this.login());
         this.registerButton.addEventListener('click', () => this.register());
         this.logoutButton.addEventListener('click', () => this.logout());
         this.menuToggleButton.addEventListener('click', () => this.toggleSidebar());
-        
-        // Lyssna på ändringar i användarens inloggningsstatus
+        this.backToLoginButton.addEventListener('click', () => this.showAuth());
+
         auth.onAuthStateChanged(user => {
             if (user) {
-                // Användare är inloggad
-                this.showApp();
-                this.renderDashboard(user);
+                if (user.emailVerified) {
+                    this.showApp();
+                    this.renderDashboard(user);
+                } else {
+                    this.showVerification(user.email);
+                }
             } else {
-                // Användare är utloggad
                 this.showAuth();
             }
         });
     }
 
-    // --- Auth-funktioner ---
     async login() {
         const email = this.emailInput.value;
         const password = this.passwordInput.value;
         this.authError.textContent = '';
         try {
-            await auth.signInWithEmailAndPassword(email, password);
+            const userCredential = await auth.signInWithEmailAndPassword(email, password);
+            if (!userCredential.user.emailVerified) {
+                // Skicka mejl igen om användaren inte är verifierad och försöker logga in
+                await userCredential.user.sendEmailVerification();
+                this.showVerification(email);
+                await auth.signOut(); // Logga ut igen för att tvinga verifiering
+            }
         } catch (error) {
             this.authError.textContent = 'Fel e-post eller lösenord.';
             console.error("Login failed:", error);
@@ -75,10 +86,18 @@ class FlowBooksApp {
         const password = this.passwordInput.value;
         this.authError.textContent = '';
         try {
-            await auth.createUserWithEmailAndPassword(email, password);
+            const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+            // Skicka verifieringsmejl
+            await userCredential.user.sendEmailVerification();
+            // Visa verifierings-skärmen
+            this.showVerification(email);
+            // Logga ut för att tvinga användaren att verifiera sig innan inloggning
+            await auth.signOut();
         } catch (error) {
             if (error.code === 'auth/weak-password') {
                 this.authError.textContent = 'Lösenordet måste vara minst 6 tecken.';
+            } else if (error.code === 'auth/email-already-in-use') {
+                this.authError.textContent = 'E-postadressen är redan registrerad.';
             } else {
                 this.authError.textContent = 'Kunde inte registrera användare.';
             }
@@ -90,32 +109,40 @@ class FlowBooksApp {
         auth.signOut();
     }
 
-    showApp() {
+    // --- Funktioner för att visa/dölja vyer ---
+    hideAllViews() {
         this.authContainer.style.display = 'none';
+        this.appContainer.style.display = 'none';
+        this.verifyEmailContainer.style.display = 'none';
+    }
+
+    showApp() {
+        this.hideAllViews();
         this.appContainer.style.display = 'flex';
     }
 
     showAuth() {
+        this.hideAllViews();
         this.authContainer.style.display = 'flex';
-        this.appContainer.style.display = 'none';
+    }
+
+    showVerification(email) {
+        this.hideAllViews();
+        this.verificationEmailAddress.textContent = email;
+        this.verifyEmailContainer.style.display = 'flex';
     }
 
     toggleSidebar() {
         this.sidebar.classList.toggle('is-open');
     }
 
-    // --- Implementering av Dashboard (utan placeholders) ---
-
     renderDashboard(user) {
         this.mainView.innerHTML = '';
         const dashboardGrid = document.createElement('div');
         dashboardGrid.className = 'dashboard-grid';
-
-        // Uppdatera profil-ikon
         const userInitial = user.email.charAt(0).toUpperCase();
         this.userProfileIcon.innerHTML = `<div class="profile-avatar">${userInitial}</div>`;
         
-        // Här renderar vi korten utan data. Datan skulle normalt hämtas från Firestore.
         const cashflowCard = this.createCard('Kassaflöde', this.createEmptyState("Ingen data än."));
         const resultatCard = this.createCard('Resultat', this.createEmptyState("Börja bokföra!"));
         const intakterCard = this.createCard('Intäkter', this.createEmptyState("Skapa en faktura."));
@@ -131,7 +158,6 @@ class FlowBooksApp {
         this.mainView.appendChild(dashboardGrid);
     }
     
-    // --- Återanvändbara UI-komponenter ---
     createCard(title, contentElement) {
         const card = document.createElement('div');
         card.className = 'card';
@@ -153,7 +179,6 @@ class FlowBooksApp {
     }
 }
 
-// Starta applikationen
 document.addEventListener('DOMContentLoaded', () => {
     new FlowBooksApp();
 });
