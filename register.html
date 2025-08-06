@@ -12,37 +12,20 @@
         <div class="auth-box">
             <a href="index.html" class="logo-link"><h2 class="logo">FlowBooks</h2></a>
             <h3>Skapa ditt konto</h3>
-            
             <p id="auth-error" class="error-message"></p>
-            
-            <div class="input-group">
-                <label for="companyName">Företagsnamn</label>
-                <input type="text" id="companyName" required>
-            </div>
-            <div class="input-group">
-                <label for="email">E-post</label>
-                <input type="email" id="email" required>
-            </div>
-            <div class="input-group">
-                <label for="password">Lösenord</label>
-                <input type="password" id="password" placeholder="Minst 6 tecken" required>
-            </div>
-            
+            <div class="input-group"><label for="companyName">Ditt Företagsnamn</label><input type="text" id="companyName" required></div>
+            <div class="input-group"><label for="email">E-post</label><input type="email" id="email" required></div>
+            <div class="input-group"><label for="password">Lösenord</label><input type="password" id="password" placeholder="Minst 6 tecken" required></div>
             <button id="register-btn" class="btn btn-primary btn-full-width">Skapa konto</button>
-            
             <p class="auth-switch">Har du redan ett konto? <a href="login.html">Logga in här</a></p>
         </div>
     </div>
 
     <script type="module">
-        // Importera nödvändiga funktioner från Firebase SDK
         import { createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
-        
-        // **KORRIGERING:** Importera de färdig-initierade 'auth' och 'db' objekten från din konfigurationsfil
+        import { doc, setDoc, collection, query, where, getDocs, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
         import { auth, db } from './firebase-config.js';
 
-        // Hämta element från DOM
         const registerBtn = document.getElementById('register-btn');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
@@ -50,11 +33,9 @@
         const errorEl = document.getElementById('auth-error');
 
         registerBtn.addEventListener('click', async () => {
-            // Rensa tidigare felmeddelanden
             errorEl.textContent = '';
-
             const companyName = companyNameInput.value;
-            const email = emailInput.value;
+            const email = emailInput.value.trim().toLowerCase();
             const password = passwordInput.value;
 
             if (!companyName || !email || !password) {
@@ -63,37 +44,69 @@
             }
 
             try {
-                // Använd det importerade 'auth'-objektet direkt
+                // Steg 1: Skapa användaren i Auth
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
 
-                // Använd det importerade 'db'-objektet direkt för att spara användardata
+                // Steg 2: Kolla efter en inbjudan
+                const invitationsRef = collection(db, 'invitations');
+                const q = query(invitationsRef, where("email", "==", email));
+                const invitationSnapshot = await getDocs(q);
+
+                let companyId;
+                let finalCompanyName = companyName;
+
+                if (!invitationSnapshot.empty) {
+                    // Inbjudan hittades! Anslut till befintligt företag.
+                    const invitation = invitationSnapshot.docs[0].data();
+                    companyId = invitation.companyId;
+                    finalCompanyName = invitation.companyName; // Använd företagets namn från inbjudan
+                    
+                    // Uppdatera företagsdokumentet med den nya medlemmen
+                    const companyRef = doc(db, 'companies', companyId);
+                    await runTransaction(db, async (transaction) => {
+                        const companyDoc = await transaction.get(companyRef);
+                        if (!companyDoc.exists()) {
+                            throw "Företaget från inbjudan finns inte.";
+                        }
+                        const members = companyDoc.data().members || [];
+                        members.push(user.uid);
+                        transaction.update(companyRef, { members: members });
+                    });
+
+                    // Ta bort inbjudan
+                    await deleteDoc(invitationSnapshot.docs[0].ref);
+
+                } else {
+                    // Ingen inbjudan. Skapa ett nytt företag.
+                    const newCompanyRef = doc(collection(db, 'companies'));
+                    companyId = newCompanyRef.id;
+                    await setDoc(newCompanyRef, {
+                        name: companyName,
+                        ownerId: user.uid,
+                        createdAt: new Date(),
+                        members: [user.uid]
+                    });
+                }
+
+                // Steg 3: Skapa användarens dokument med rätt companyId
                 await setDoc(doc(db, "users", user.uid), {
                     email: user.email,
-                    companyName: companyName,
+                    companyId: companyId,
+                    companyName: finalCompanyName,
                     createdAt: new Date()
                 });
 
-                // Skicka verifieringsmejl
+                // Steg 4: Skicka verifieringsmejl
                 await sendEmailVerification(user);
-                
-                alert(`Ett verifieringsmejl har skickats till ${user.email}. Klicka på länken i mejlet och logga sedan in.`);
+                alert(`Ett verifieringsmejl har skickats till ${user.email}. Klicka på länken och logga sedan in.`);
                 window.location.href = 'login.html';
 
             } catch (error) {
-                console.error("Fullständigt registreringsfel:", error);
-
-                if (error.code === 'auth/weak-password') {
-                    errorEl.textContent = 'Lösenordet måste vara minst 6 tecken.';
-                } else if (error.code === 'auth/email-already-in-use') {
-                    errorEl.textContent = 'E-postadressen är redan registrerad.';
-                } else if (error.code === 'auth/invalid-email') {
-                    errorEl.textContent = 'Vänligen ange en giltig e-postadress.';
-                } else {
-                    errorEl.textContent = 'Kunde inte registrera. Se konsolen för teknisk information.';
-                }
+                console.error("Registreringsfel:", error);
+                errorEl.textContent = 'Kunde inte registrera användare. Kontrollera att e-posten inte redan används.';
             }
         });
     </script>
 </body>
-</html>
+</ht
