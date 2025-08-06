@@ -13,22 +13,14 @@
 
     <!-- Landningssida och Autentiserings-vy -->
     <div id="landing-container">
-        <div class="landing-grid">
-            <div class="landing-content">
-                <h1 class="landing-title">Bokföring för den moderna konsulten.</h1>
-                <p class="landing-subtitle">FlowBooks automatiserar din administration så att du kan fokusera på det du gör bäst. Lägg max 15 minuter i månaden på din bokföring.</p>
-                <ul class="features-list">
-                    <li>✓ Sömlös bankintegration i realtid</li>
-                    <li>✓ AI-driven kvitto- och fakturatolkning</li>
-                    <li>✓ Automatiserad moms och arbetsgivardeklaration</li>
-                    <li>✓ Byggd för enkelhet, snabbhet och kontroll</li>
-                </ul>
-            </div>
+        <div class="landing-content-centered">
+            <!-- Textinnehåll -->
+            <h1 class="landing-title">Bokföring för den moderna konsulten.</h1>
+            <p class="landing-subtitle">FlowBooks automatiserar din administration så att du kan fokusera på det du gör bäst. Lägg max 15 minuter i månaden på din bokföring.</p>
 
-            <!-- Inloggning och Registrerings-vy -->
+            <!-- Inloggningsruta -->
             <div id="auth-wrapper">
                 <div class="auth-box">
-                    <h2 class="auth-title">Logga in eller skapa konto</h2>
                     <p id="auth-error" class="error-message"></p>
                     <div class="input-group">
                         <label for="email">E-post</label>
@@ -40,15 +32,22 @@
                     </div>
                     <div class="auth-buttons">
                         <button id="login-btn" class="btn btn-primary">Logga in</button>
-                        <button id="register-btn" class="btn btn-secondary">Registrera</button>
+                        <button id="register-btn" class="btn btn-secondary">Skapa konto</button>
                     </div>
                 </div>
             </div>
+
+            <!-- Fördelar under rutan -->
+            <ul class="features-list">
+                <li>✓ Sömlös bankintegration</li>
+                <li>✓ AI-driven kvittotolkning</li>
+                <li>✓ Automatiserad moms</li>
+            </ul>
         </div>
     </div>
 
 
-    <!-- E-postverifierings-vy -->
+    <!-- E-postverifierings-vy (oförändrad) -->
     <div id="verify-email-container" style="display: none;">
         <div class="auth-box">
             <h2 class="logo">FlowBooks</h2>
@@ -60,7 +59,7 @@
     </div>
 
 
-    <!-- Huvudapplikationen (dold som standard) -->
+    <!-- Huvudapplikationen (oförändrad) -->
     <div id="app-container" style="display: none;">
         <aside class="sidebar">
             <div class="sidebar-header">
