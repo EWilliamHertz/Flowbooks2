@@ -35,30 +35,30 @@
     </div>
     
     <script type="module">
-        // Importera nödvändiga funktioner
-        import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        // Importera den delade app-instansen
-        import { app } from './firebase-config.js';
-
-        const auth = getAuth(app);
+        // Importera nödvändiga funktioner från Firebase SDK
+        import { signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
         
+        // **KORRIGERING:** Importera det färdig-initierade 'auth'-objektet från din konfigurationsfil
+        import { auth } from './firebase-config.js';
+
+        // Hämta element från DOM
         const loginBtn = document.getElementById('login-btn');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
         const messageEl = document.getElementById('auth-message');
         const forgotPasswordLink = document.getElementById('forgot-password-link');
 
-        // Om användaren redan är inloggad och verifierad, skicka till appen
+        // Om en verifierad användare redan är inloggad, skicka direkt till appen
         onAuthStateChanged(auth, user => {
             if (user && user.emailVerified) {
                 window.location.href = 'app.html';
             }
         });
 
-        // Event listener för inloggningsknappen
-        loginBtn.addEventListener('click', async () => {
+        // Funktion som hanterar inloggningslogiken
+        const handleLogin = async () => {
             messageEl.textContent = '';
-            messageEl.style.color = '#e74c3c'; // Standardfärg för fel
+            messageEl.style.color = '#e74c3c';
 
             const email = emailInput.value;
             const password = passwordInput.value;
@@ -69,11 +69,9 @@
             }
 
             try {
-                // **KORRIGERING:** Använder den moderna v9-syntaxen
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                
                 if (!userCredential.user.emailVerified) {
-                    messageEl.textContent = 'Verifiera din e-post innan du loggar in. Vi kan skicka ett nytt mejl om du vill.';
+                    messageEl.textContent = 'Verifiera din e-post innan du loggar in.';
                     await auth.signOut();
                 } else {
                     window.location.href = 'app.html';
@@ -82,16 +80,16 @@
                 console.error("Inloggningsfel:", error.code);
                 messageEl.textContent = 'Fel e-post eller lösenord.';
             }
-        });
+        };
 
-        // **NYTT:** Event listener för "Glömt lösenord?"
-        forgotPasswordLink.addEventListener('click', async (e) => {
-            e.preventDefault(); // Förhindra att sidan laddas om
+        // Event listener för "Glömt lösenord?"
+        const handlePasswordReset = async (e) => {
+            e.preventDefault();
             messageEl.textContent = '';
             
             const email = emailInput.value;
             if (!email) {
-                messageEl.textContent = 'Vänligen fyll i din e-postadress i fältet ovan först.';
+                messageEl.textContent = 'Fyll i din e-postadress i fältet ovan först.';
                 messageEl.style.color = '#e74c3c';
                 return;
             }
@@ -99,11 +97,23 @@
             try {
                 await sendPasswordResetEmail(auth, email);
                 messageEl.textContent = `En länk för att återställa lösenordet har skickats till ${email}.`;
-                messageEl.style.color = 'green'; // Grön färg för framgångsmeddelande
+                messageEl.style.color = 'green';
             } catch (error) {
                 console.error("Fel vid återställning:", error.code);
                 messageEl.textContent = 'Kunde inte skicka återställningslänk. Kontrollera att e-postadressen är korrekt.';
                 messageEl.style.color = '#e74c3c';
+            }
+        };
+
+        // Koppla alla event listeners
+        loginBtn.addEventListener('click', handleLogin);
+        forgotPasswordLink.addEventListener('click', handlePasswordReset);
+        
+        // **NYTT:** Lägg till event listener för "Enter"-tangenten på lösenordsfältet
+        passwordInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Förhindra standardbeteende (som att skicka ett formulär)
+                handleLogin();
             }
         });
     </script>
