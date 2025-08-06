@@ -3,89 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowBooks | Automatiserad Bokföring för Moderna Konsulter</title>
+    <title>FlowBooks | Automatiserad Bokföring</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <header class="landing-header">
-        <div class="container">
-            <nav class="main-nav">
-                <h2 class="logo">FlowBooks</h2>
-                <div class="nav-links">
-                    <a href="#features">Funktioner</a>
-                    <a href="#pricing">Pris</a>
-                    <a href="login.html" class="btn btn-secondary">Logga in</a>
-                    <a href="register.html" class="btn btn-primary">Skapa konto gratis</a>
-                </div>
-            </nav>
-        </div>
-    </header>
+    <!-- Denna div är hela din app. JS kommer att byta innehållet här. -->
+    <div id="root"></div>
 
-    <main>
-        <section id="hero" class="hero-section">
-            <div class="container text-center">
-                <h1 class="hero-title">Bokföring för 15 minuter i månaden.</h1>
-                <p class="hero-subtitle">FlowBooks är den AI-drivna co-piloten för dig som modern konsult. Vi automatiserar din administration så att du kan fokusera på det du gör bäst.</p>
-                <a href="register.html" class="btn btn-primary btn-large">Kom igång – Helt gratis</a>
-            </div>
-        </section>
-
-        <section id="features" class="features-section">
-            <div class="container">
-                <div class="section-header">
-                    <h2>Designad för att ge dig tiden tillbaka</h2>
-                    <p>FlowBooks är inte bara ett bokföringsprogram; det är ett automationsverktyg.</p>
-                </div>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <h3>Hyper-automation</h3>
-                        <p>Från AI-driven kvittoskanning och automatisk kontering till sömlös bankavstämning. Systemet lär sig ditt beteende för att minimera din insats.</p>
-                    </div>
-                    <div class="feature-card">
-                        <h3>Allt-i-ett</h3>
-                        <p>Fakturering, lön, momsrapporter och digital årsredovisning. Allt ingår i ett enda, transparent pris. Inga dyra moduler eller dolda avgifter.</p>
-                    </div>
-                    <div class="feature-card">
-                        <h3>Finansiell Co-Pilot</h3>
-                        <p>Få proaktiva insikter och råd. Systemet varnar för kommande likviditetssvackor och hjälper dig fatta smartare finansiella beslut.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="pricing" class="pricing-section">
-            <div class="container">
-                <div class="section-header">
-                    <h2>Ett enkelt pris. Alla funktioner.</h2>
-                    <p>Inga krångliga nivåer eller tillägg. Vårt mål är enkelhet, och det gäller även prissättningen.</p>
-                </div>
-                <div class="pricing-card">
-                    <h3>FlowBooks Pro</h3>
-                    <p class="price">399 kr<span class="price-period">/månad</span></p>
-                    <p class="pricing-description">Alla nuvarande och framtida programfunktioner ingår. Alltid.</p>
-                    <ul class="pricing-features">
-                        <li>✓ Obegränsad fakturering</li>
-                        <li>✓ Automatisk bankkoppling</li>
-                        <li>✓ AI-driven kvittolkning</li>
-                        <li>✓ Lön för en person</li>
-                        <li>✓ Moms & Arbetsgivardeklaration</li>
-                        <li>✓ Förenklat årsbokslut & K2</li>
-                        <li>✓ Digital inlämning till Bolagsverket</li>
-                    </ul>
-                    <a href="register.html" class="btn btn-primary btn-full-width">Starta din kostnadsfria provperiod</a>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <footer class="landing-footer">
-        <div class="container">
-            <p>&copy; 2025 FlowBooks. Byggd för moderna konsulter i Sverige.</p>
-        </div>
-    </footer>
-
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+    
+    <!-- Huvudscriptet för hela applikationen -->
+    <script src="app.js" type="module"></script>
 </body>
 </html>
