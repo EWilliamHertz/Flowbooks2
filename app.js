@@ -17,6 +17,9 @@ async function main() {
             initializeAppUI();
             navigateTo('Översikt');
             document.getElementById('app-container').style.visibility = 'visible';
+        } else {
+            // Om ingen användare är inloggad eller verifierad, skicka till login-sidan
+            window.location.href = 'login.html';
         }
     });
 }
@@ -44,7 +47,9 @@ function initializeAppUI() {
         document.getElementById('profile-dropdown').classList.toggle('show');
     });
 
-    document.getElementById('logout-btn').addEventListener('click', () => auth.signOut());
+    document.getElementById('logout-btn').addEventListener('click', () => {
+        auth.signOut();
+    });
 
     document.getElementById('settings-link').addEventListener('click', e => {
         e.preventDefault();
@@ -131,7 +136,7 @@ async function saveExpense() {
 function renderSettingsPage() {
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = `<div class="settings-grid">
-        <div class="card"><h3>Profilbild</h3><input type="file" id="profile-pic-upload"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div>
+        <div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div>
         <div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div>
         <div class="card"><h3>Ta bort konto</h3><p>Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort konto</button></div>
     </div>`;
@@ -140,11 +145,65 @@ function renderSettingsPage() {
     document.getElementById('delete-account').addEventListener('click', deleteAccount);
 }
 
-async function saveProfileImage() { /* ... logik ... */ }
-async function saveCompanyInfo() { /* ... logik ... */ }
-async function deleteAccount() { /* ... logik ... */ }
+async function saveProfileImage() {
+    const fileInput = document.getElementById('profile-pic-upload');
+    const file = fileInput.files[0];
+    if (!file) {
+        alert("Välj en fil att ladda upp.");
+        return;
+    }
+    const filePath = `profile_images/${currentUser.uid}/${file.name}`;
+    const fileRef = storage.ref(filePath);
+    try {
+        await fileRef.put(file);
+        const url = await fileRef.getDownloadURL();
+        await db.collection('users').doc(currentUser.uid).update({ profileImageURL: url });
+        
+        // Uppdatera UI direkt
+        document.getElementById('user-profile-icon').style.backgroundImage = `url(${url})`;
+        document.getElementById('user-profile-icon').textContent = ''; // Ta bort initial
+        userData.profileImageURL = url; // Uppdatera lokalt state
+        alert('Profilbild uppdaterad!');
+    } catch (error) {
+        console.error("Fel vid uppladdning av bild:", error);
+        alert("Kunde inte ladda upp bilden.");
+    }
+}
 
+async function saveCompanyInfo() {
+    const newName = document.getElementById('setting-company').value;
+    if (!newName) {
+        alert("Företagsnamn kan inte vara tomt.");
+        return;
+    }
+    try {
+        await db.collection('users').doc(currentUser.uid).update({ companyName: newName });
+        userData.companyName = newName; // Uppdatera lokalt state
+        alert('Företagsinformation sparad!');
+    } catch (error) {
+        console.error("Kunde inte spara företagsinformation:", error);
+        alert("Ett fel uppstod.");
+    }
+}
+
+async function deleteAccount() {
+    const confirmation = prompt("Är du helt säker? Skriv 'RADERA' för att bekräfta.");
+    if (confirmation === 'RADERA') {
+        try {
+            // I en verklig applikation bör detta anropa en Cloud Function
+            // som raderar all relaterad data (utgifter, fakturor etc.)
+            await db.collection('users').doc(currentUser.uid).delete();
+            await currentUser.delete();
+            alert("Ditt konto har tagits bort.");
+            window.location.href = 'login.html';
+        } catch (error) {
+            console.error("Fel vid borttagning av konto:", error);
+            alert("Kunde inte ta bort kontot. Du kan behöva logga ut och in igen för att göra detta.");
+        }
+    } else {
+        alert("Borttagning avbruten.");
+    }
+}
 
 // --- Kör appen ---
 main();
-
