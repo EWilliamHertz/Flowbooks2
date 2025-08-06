@@ -3,23 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowBooks | Automatiserad Bokföring</title>
+    <title>FlowBooks | Automatiserad Bokföring för Moderna Konsulter</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Denna div är hela din app. JS kommer att byta innehållet här. -->
-    <div id="root"></div>
+    <header class="landing-header">
+        <div class="container">
+            <nav class="main-nav">
+                <h2 class="logo">FlowBooks</h2>
+                <div class="nav-links">
+                    <a href="login.html" class="btn btn-secondary">Logga in</a>
+                    <a href="register.html" class="btn btn-primary">Skapa konto gratis</a>
+                </div>
+            </nav>
+        </div>
+    </header>
 
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
-    
-    <!-- Huvudscriptet för hela applikationen -->
-    <script src="app.js" type="module"></script>
+    <main>
+        <section id="hero" class="hero-section">
+            <div class="container text-center">
+                <h1 class="hero-title">Bokföring för 15 minuter i månaden.</h1>
+                <p class="hero-subtitle">FlowBooks är den AI-drivna co-piloten för dig som modern konsult. Vi automatiserar din administration så att du kan fokusera på det du gör bäst.</p>
+                <a href="register.html" class="btn btn-primary btn-large">Kom igång – Helt gratis</a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="landing-footer">
+        <div class="container">
+            <p>&copy; 2025 FlowBooks.</p>
+        </div>
+    </footer>
 </body>
 </html>
