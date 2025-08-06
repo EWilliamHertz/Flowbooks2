@@ -1,121 +1,127 @@
 // app.js
+
+// TODO: Ersätt med din egen Firebase-konfiguration
+const firebaseConfig = {
+    apiKey: "AIzaSyDGamRgGYt-Bl2Mj0znqAG7uFWM9TC0VgU",
+    authDomain: "flowbooks-73cd9.firebaseapp.com",
+    projectId: "flowbooks-73cd9",
+    storageBucket: "flowbooks-73cd9.appspot.com",
+    messagingSenderId: "226642349583",
+    appId: "1:226642349583:web:e2376d9283d2d3c33ddd7a",
+    measurementId: "G-M0XD9JL3CR"
+};
+
+// Initialisera Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
 class FlowBooksApp {
     constructor() {
+        // Auth-element
+        this.authContainer = document.getElementById('auth-container');
+        this.emailInput = document.getElementById('email');
+        this.passwordInput = document.getElementById('password');
+        this.loginButton = document.getElementById('login-btn');
+        this.registerButton = document.getElementById('register-btn');
+        this.authError = document.getElementById('auth-error');
+
+        // App-element
+        this.appContainer = document.getElementById('app-container');
         this.mainView = document.getElementById('main-view');
         this.menuToggleButton = document.getElementById('menu-toggle-btn');
         this.sidebar = document.querySelector('.sidebar');
-
+        this.logoutButton = document.getElementById('logout-btn');
+        this.userProfileIcon = document.getElementById('user-profile-icon');
+        
         this.init();
     }
 
     init() {
-        // Lyssna på händelser
+        // Lyssna på Auth-knappar
+        this.loginButton.addEventListener('click', () => this.login());
+        this.registerButton.addEventListener('click', () => this.register());
+        this.logoutButton.addEventListener('click', () => this.logout());
         this.menuToggleButton.addEventListener('click', () => this.toggleSidebar());
         
-        // Rendera startsidan (Dashboard)
-        this.renderDashboard();
+        // Lyssna på ändringar i användarens inloggningsstatus
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // Användare är inloggad
+                this.showApp();
+                this.renderDashboard(user);
+            } else {
+                // Användare är utloggad
+                this.showAuth();
+            }
+        });
+    }
+
+    // --- Auth-funktioner ---
+    async login() {
+        const email = this.emailInput.value;
+        const password = this.passwordInput.value;
+        this.authError.textContent = '';
+        try {
+            await auth.signInWithEmailAndPassword(email, password);
+        } catch (error) {
+            this.authError.textContent = 'Fel e-post eller lösenord.';
+            console.error("Login failed:", error);
+        }
+    }
+
+    async register() {
+        const email = this.emailInput.value;
+        const password = this.passwordInput.value;
+        this.authError.textContent = '';
+        try {
+            await auth.createUserWithEmailAndPassword(email, password);
+        } catch (error) {
+            if (error.code === 'auth/weak-password') {
+                this.authError.textContent = 'Lösenordet måste vara minst 6 tecken.';
+            } else {
+                this.authError.textContent = 'Kunde inte registrera användare.';
+            }
+            console.error("Registration failed:", error);
+        }
     }
     
+    logout() {
+        auth.signOut();
+    }
+
+    showApp() {
+        this.authContainer.style.display = 'none';
+        this.appContainer.style.display = 'flex';
+    }
+
+    showAuth() {
+        this.authContainer.style.display = 'flex';
+        this.appContainer.style.display = 'none';
+    }
+
     toggleSidebar() {
         this.sidebar.classList.toggle('is-open');
     }
 
-    // --- Återanvändbara UI-komponenter ---
+    // --- Implementering av Dashboard (utan placeholders) ---
 
-    createButton(text, type = 'primary') {
-        const button = document.createElement('button');
-        button.textContent = text;
-        button.className = `btn btn-${type}`;
-        return button;
-    }
-
-    createCard(title, contentElement) {
-        const card = document.createElement('div');
-        card.className = 'card';
-
-        const cardTitle = document.createElement('h3');
-        cardTitle.className = 'card-title';
-        cardTitle.textContent = title;
-
-        card.appendChild(cardTitle);
-        card.appendChild(contentElement);
-        return card;
-    }
-    
-    createInput(label, type = 'text', placeholder = '') {
-        // Implementering för input-komponent (ej använd i dashboard)
-        const wrapper = document.createElement('div');
-        const labelEl = document.createElement('label');
-        const inputEl = document.createElement('input');
-        
-        labelEl.textContent = label;
-        inputEl.type = type;
-        inputEl.placeholder = placeholder;
-        
-        wrapper.appendChild(labelEl);
-        wrapper.appendChild(inputEl);
-        return wrapper;
-    }
-
-    createModal(title, contentElement) {
-        // Implementering för modal (ej använd i dashboard)
-        const modal = document.createElement('div');
-        // ... Logik för att skapa modal ...
-        return modal;
-    }
-
-    // --- Implementering av Dashboard ---
-
-    renderDashboard() {
-        // Rensa befintlig vy
+    renderDashboard(user) {
         this.mainView.innerHTML = '';
-        
         const dashboardGrid = document.createElement('div');
         dashboardGrid.className = 'dashboard-grid';
 
-        // 1. Kassaflödeskort
-        const cashflowContent = document.createElement('canvas');
-        cashflowContent.id = 'cashFlowChart';
-        const cashflowCard = this.createCard('Kassaflöde (senaste 30 dagarna)', cashflowContent);
-
-        // 2. Nyckeltalskort (grupperade)
-        const metricsContainer = document.createElement('div');
-        metricsContainer.className = 'dashboard-grid'; // Använd samma grid för interna kort
-        metricsContainer.style.gridColumn = 'span 2'; // Få den att ta upp mer plats om möjligt
-
-        const createMetricCard = (title, value) => {
-            const content = document.createElement('div');
-            const p = document.createElement('p');
-            p.className = 'metric-value';
-            p.textContent = value;
-            content.appendChild(p);
-            return this.createCard(title, content);
-        };
+        // Uppdatera profil-ikon
+        const userInitial = user.email.charAt(0).toUpperCase();
+        this.userProfileIcon.innerHTML = `<div class="profile-avatar">${userInitial}</div>`;
         
-        const resultatCard = createMetricCard('Resultat', '+15 230 kr');
-        const intakterCard = createMetricCard('Intäkter', '45 000 kr');
-        const kostnaderCard = createMetricCard('Kostnader', '-29 770 kr');
+        // Här renderar vi korten utan data. Datan skulle normalt hämtas från Firestore.
+        const cashflowCard = this.createCard('Kassaflöde', this.createEmptyState("Ingen data än."));
+        const resultatCard = this.createCard('Resultat', this.createEmptyState("Börja bokföra!"));
+        const intakterCard = this.createCard('Intäkter', this.createEmptyState("Skapa en faktura."));
+        const kostnaderCard = this.createCard('Kostnader', this.createEmptyState("Registrera ett kvitto."));
+        const todoCard = this.createCard('Att göra', this.createEmptyState("Du är helt uppdaterad!"));
 
-        // 3. Att-göra-kort
-        const todoContent = document.createElement('ul');
-        todoContent.className = 'todo-list';
-        const todoItems = [
-            { text: '3 transaktioner att granska', href: '#' },
-            { text: 'Momsrapport för Q3 ska godkännas (förfaller om 5 dagar)', href: '#' },
-            { text: 'Faktura #1023 är förfallen', href: '#' },
-        ];
-        todoItems.forEach(item => {
-            const li = document.createElement('li');
-            const a = document.createElement('a');
-            a.textContent = item.text;
-            a.href = item.href;
-            li.appendChild(a);
-            todoContent.appendChild(li);
-        });
-        const todoCard = this.createCard('Att göra', todoContent);
-
-
-        // Lägg till korten i gridden
         dashboardGrid.appendChild(cashflowCard);
         dashboardGrid.appendChild(resultatCard);
         dashboardGrid.appendChild(intakterCard);
@@ -123,14 +129,31 @@ class FlowBooksApp {
         dashboardGrid.appendChild(todoCard);
 
         this.mainView.appendChild(dashboardGrid);
+    }
+    
+    // --- Återanvändbara UI-komponenter ---
+    createCard(title, contentElement) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        const cardTitle = document.createElement('h3');
+        cardTitle.className = 'card-title';
+        cardTitle.textContent = title;
+        card.appendChild(cardTitle);
+        card.appendChild(contentElement);
+        return card;
+    }
 
-        // Här skulle man initiera diagrammet, t.ex. med Chart.js
-        // const ctx = document.getElementById('cashFlowChart').getContext('2d');
-        // new Chart(ctx, { ... config ... });
+    createEmptyState(text) {
+        const p = document.createElement('p');
+        p.textContent = text;
+        p.style.color = 'var(--text-color-light)';
+        p.style.textAlign = 'center';
+        p.style.padding = '1rem';
+        return p;
     }
 }
 
-// Starta applikationen när DOM är laddat
+// Starta applikationen
 document.addEventListener('DOMContentLoaded', () => {
     new FlowBooksApp();
 });
