@@ -39,6 +39,10 @@ class FlowBooksApp {
         this.logoutButton = document.getElementById('logout-btn');
         this.userProfileIcon = document.getElementById('user-profile-icon');
         
+        // Navigationselement (NYTT)
+        this.sidebarNav = document.querySelector('.sidebar-nav');
+        this.pageTitle = document.querySelector('.page-title');
+
         this.init();
     }
 
@@ -50,24 +54,74 @@ class FlowBooksApp {
         this.menuToggleButton.addEventListener('click', () => this.toggleSidebar());
         this.backToLoginButton.addEventListener('click', () => this.showAuth());
 
+        // Navigations-listener (NYTT)
+        this.sidebarNav.addEventListener('click', (e) => this.handleNav(e));
+
         // Lyssna på ändringar i användarens inloggningsstatus
         auth.onAuthStateChanged(user => {
             if (user) {
-                // Användare är inloggad, kolla om e-post är verifierad
                 if (user.emailVerified) {
                     this.showApp();
-                    this.renderDashboard(user);
+                    // Starta på översiktssidan
+                    this.navigateTo('Översikt');
                 } else {
-                    // Användaren är inte verifierad
                     this.showVerification(user.email);
                 }
             } else {
-                // Användare är utloggad
                 this.showAuth();
             }
         });
     }
 
+    // --- Navigationslogik (NYTT) ---
+    handleNav(e) {
+        e.preventDefault();
+        if (e.target.tagName === 'A') {
+            const page = e.target.textContent.split(' ')[0]; // Hämta sidnamn, t.ex. "Intäkter" från "Intäkter (Fakturor)"
+            this.navigateTo(page);
+        }
+    }
+
+    navigateTo(page) {
+        // Uppdatera aktiv länk i sidomenyn
+        const links = this.sidebarNav.querySelectorAll('a');
+        links.forEach(link => {
+            link.classList.remove('active');
+            if (link.textContent.startsWith(page)) {
+                link.classList.add('active');
+            }
+        });
+
+        // Uppdatera sidans titel
+        this.pageTitle.textContent = page;
+
+        // Rendera rätt vy
+        switch (page) {
+            case 'Översikt':
+                this.renderDashboard();
+                break;
+            case 'Intäkter':
+                this.renderInvoices();
+                break;
+            case 'Utgifter':
+                this.renderExpenses();
+                break;
+            case 'Bank':
+                this.renderBank();
+                break;
+            case 'Rapporter':
+                this.renderReports();
+                break;
+            case 'Inställningar':
+                this.renderSettings();
+                break;
+            default:
+                this.renderDashboard();
+        }
+    }
+
+
+    // --- Auth-funktioner (oförändrade) ---
     async login() {
         const email = this.emailInput.value;
         const password = this.passwordInput.value;
@@ -75,10 +129,9 @@ class FlowBooksApp {
         try {
             const userCredential = await auth.signInWithEmailAndPassword(email, password);
             if (!userCredential.user.emailVerified) {
-                // Skicka mejl igen om användaren inte är verifierad och försöker logga in
                 await userCredential.user.sendEmailVerification();
                 this.showVerification(email);
-                await auth.signOut(); // Logga ut igen för att tvinga verifiering
+                await auth.signOut();
             }
         } catch (error) {
             this.authError.textContent = 'Fel e-post eller lösenord.';
@@ -92,11 +145,8 @@ class FlowBooksApp {
         this.authError.textContent = '';
         try {
             const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-            // Skicka verifieringsmejl
             await userCredential.user.sendEmailVerification();
-            // Visa verifierings-skärmen
             this.showVerification(email);
-            // Logga ut för att tvinga användaren att verifiera sig innan inloggning
             await auth.signOut();
         } catch (error) {
             if (error.code === 'auth/weak-password') {
@@ -114,7 +164,7 @@ class FlowBooksApp {
         auth.signOut();
     }
 
-    // --- Funktioner för att visa/dölja vyer ---
+    // --- Funktioner för att visa/dölja vyer (oförändrade) ---
     hideAllViews() {
         this.landingContainer.style.display = 'none';
         this.appContainer.style.display = 'none';
@@ -124,6 +174,12 @@ class FlowBooksApp {
     showApp() {
         this.hideAllViews();
         this.appContainer.style.display = 'flex';
+        // Uppdatera profil-ikon när appen visas
+        const user = auth.currentUser;
+        if (user) {
+            const userInitial = user.email.charAt(0).toUpperCase();
+            this.userProfileIcon.innerHTML = `<div class="profile-avatar">${userInitial}</div>`;
+        }
     }
 
     showAuth() {
@@ -141,12 +197,11 @@ class FlowBooksApp {
         this.sidebar.classList.toggle('is-open');
     }
 
-    renderDashboard(user) {
+    // --- Rendering-funktioner för varje sida (NYTT & Uppdaterat) ---
+    renderDashboard() {
         this.mainView.innerHTML = '';
         const dashboardGrid = document.createElement('div');
         dashboardGrid.className = 'dashboard-grid';
-        const userInitial = user.email.charAt(0).toUpperCase();
-        this.userProfileIcon.innerHTML = `<div class="profile-avatar">${userInitial}</div>`;
         
         const cashflowCard = this.createCard('Kassaflöde', this.createEmptyState("Ingen data än."));
         const resultatCard = this.createCard('Resultat', this.createEmptyState("Börja bokföra!"));
@@ -163,6 +218,37 @@ class FlowBooksApp {
         this.mainView.appendChild(dashboardGrid);
     }
     
+    renderInvoices() {
+        this.mainView.innerHTML = '';
+        const content = this.createEmptyState("Här kommer du kunna se och hantera alla dina kundfakturor.");
+        this.mainView.appendChild(content);
+    }
+
+    renderExpenses() {
+        this.mainView.innerHTML = '';
+        const content = this.createEmptyState("Här kommer du kunna se och hantera alla dina utgifter och kvitton.");
+        this.mainView.appendChild(content);
+    }
+
+    renderBank() {
+        this.mainView.innerHTML = '';
+        const content = this.createEmptyState("Här kommer du se din bankintegration och transaktioner.");
+        this.mainView.appendChild(content);
+    }
+
+    renderReports() {
+        this.mainView.innerHTML = '';
+        const content = this.createEmptyState("Här kommer du kunna skapa momsrapporter och andra finansiella rapporter.");
+        this.mainView.appendChild(content);
+    }
+
+    renderSettings() {
+        this.mainView.innerHTML = '';
+        const content = this.createEmptyState("Här kommer du kunna ändra dina företags- och kontoinställningar.");
+        this.mainView.appendChild(content);
+    }
+    
+    // --- Återanvändbara UI-komponenter (oförändrade) ---
     createCard(title, contentElement) {
         const card = document.createElement('div');
         card.className = 'card';
@@ -179,7 +265,8 @@ class FlowBooksApp {
         p.textContent = text;
         p.style.color = 'var(--text-color-light)';
         p.style.textAlign = 'center';
-        p.style.padding = '1rem';
+        p.style.padding = '2rem';
+        p.style.fontSize = '1.1rem';
         return p;
     }
 }
