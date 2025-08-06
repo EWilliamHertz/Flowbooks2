@@ -6,7 +6,6 @@
     <title>Dashboard | FlowBooks</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- NYTT SKRIPT FÖR GOOGLE API -->
     <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
@@ -27,7 +26,15 @@
         </aside>
         <div class="main-content">
             <header class="main-header">
-                <div class="header-left"><h1 class="page-title">Översikt</h1></div>
+                <div class="header-left">
+                    <!-- NY HAMBURGERMENY-KNAPP -->
+                    <button id="hamburger-btn" class="hamburger-menu">
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                    </button>
+                    <h1 class="page-title">Översikt</h1>
+                </div>
                 <div class="header-right">
                     <button id="new-item-btn" class="btn btn-primary" style="display: none;"></button>
                     <div class="profile-container">
@@ -45,6 +52,8 @@
 
     <!-- Platshållare för dialoger -->
     <div id="modal-container"></div>
+    <!-- NY BEHÅLLARE FÖR NOTISER -->
+    <div id="toast-container"></div>
     
     <script src="app.js" type="module"></script>
 </body>
