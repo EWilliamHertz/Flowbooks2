@@ -1,0 +1,246 @@
+/* --- Grundläggande Setup och Reset --- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --primary-color: #4A90E2;
+    --secondary-color: #F5A623;
+    --text-color: #333333;
+    --text-color-light: #666;
+    --background-color: #F8F9FA;
+    --card-background: #FFFFFF;
+    --border-color: #EAECEF;
+    --font-family: 'Inter', sans-serif;
+    --font-size-base: 16px;
+    --border-radius: 8px;
+    --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
+    --sidebar-width: 260px;
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+}
+
+/* --- Layout --- */
+#app-container {
+    display: flex;
+}
+
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--card-background);
+    border-right: 1px solid var(--border-color);
+    position: fixed;
+    top: 0;
+    left: -100%; /* Dold på mobil som standard */
+    height: 100vh;
+    transition: left 0.3s ease-in-out;
+    z-index: 1000;
+}
+
+.sidebar.is-open {
+    left: 0;
+}
+
+.main-content {
+    flex-grow: 1;
+    transition: margin-left 0.3s ease-in-out;
+}
+
+.main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background-color: var(--card-background);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 900;
+}
+
+.header-left, .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+main {
+    padding: 1.5rem;
+}
+
+/* --- Navigation & Sidomeny --- */
+.sidebar-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.logo {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+.sidebar-nav ul {
+    list-style: none;
+    padding: 1rem 0;
+}
+
+.sidebar-nav a {
+    display: block;
+    padding: 0.8rem 1.5rem;
+    text-decoration: none;
+    color: var(--text-color-light);
+    font-weight: 500;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.sidebar-nav a:hover {
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+.sidebar-nav a.active {
+    background-color: #e9f2fe;
+    color: var(--primary-color);
+    border-left-color: var(--primary-color);
+    font-weight: 600;
+}
+
+.menu-toggle {
+    display: none; /* Dold på desktop */
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-color);
+}
+
+.user-profile .profile-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+/* --- Återanvändbara Komponenter --- */
+.btn {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-weight: 500;
+    font-family: var(--font-family);
+    font-size: 0.95rem;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+.btn-primary:hover {
+    background-color: #3a82d1;
+}
+
+.card {
+    background-color: var(--card-background);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+
+/* --- Dashboard-specifik Stil --- */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-color);
+}
+.metric-value:before {
+    content: '';
+    display: block;
+    width: 24px;
+    height: 4px;
+    background-color: var(--primary-color);
+    margin-bottom: 0.5rem;
+    border-radius: 2px;
+}
+
+.todo-list {
+    list-style: none;
+}
+.todo-list li {
+    margin-bottom: 0.75rem;
+}
+.todo-list a {
+    text-decoration: none;
+    color: var(--primary-color);
+    font-weight: 500;
+}
+.todo-list a:hover {
+    text-decoration: underline;
+}
+.todo-list li:last-child {
+    margin-bottom: 0;
+}
+
+/* --- Responsivitet (Mobile-First) --- */
+@media (max-width: 768px) {
+    .main-content {
+        width: 100%;
+    }
+    .menu-toggle {
+        display: block; /* Visas på mobil */
+    }
+    .page-title {
+        display: none; /* Dölj titel bredvid hamburgare för mer utrymme */
+    }
+    main {
+        padding: 1rem;
+    }
+    .dashboard-grid {
+        grid-template-columns: 1fr; /* Stapla kort på mobil */
+    }
+}
+
+@media (min-width: 769px) {
+    .sidebar {
+        left: 0;
+        z-index: 1;
+    }
+    .main-content {
+        margin-left: var(--sidebar-width);
+    }
+    .menu-toggle {
+        display: none; /* Dölj hamburgare på desktop */
+    }
+}
