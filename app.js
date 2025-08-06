@@ -7,21 +7,53 @@ let currentUser;
 let userData;
 
 // ----- HUVUDFUNKTIONER -----
+
+// NYTT: Funktion för att visa ett allvarligt fel som stoppar appen.
+function showFatalError(message) {
+    document.getElementById('app-container').style.visibility = 'visible';
+    const mainView = document.getElementById('main-view');
+    // Rensa gränssnittet för att förhindra interaktion
+    document.querySelector('.sidebar').innerHTML = '<div class="sidebar-header"><h2 class="logo">FlowBooks</h2></div>';
+    document.querySelector('.main-header').innerHTML = `<div class="header-left"><h1 class="page-title">Fel</h1></div>`;
+    mainView.innerHTML = `
+        <div class="card card-danger">
+            <h3>Ett problem har uppstått</h3>
+            <p>${message}</p>
+            <p>Den rekommenderade lösningen är att skapa ett nytt konto för att säkerställa att all data är korrekt konfigurerad.</p>
+            <button id="logout-btn-error" class="btn btn-primary" style="margin-top: 1rem;">Logga ut och Registrera nytt konto</button>
+        </div>
+    `;
+    document.getElementById('logout-btn-error').addEventListener('click', async () => {
+        await auth.signOut();
+        window.location.href = 'register.html'; // Skicka till registrering
+    });
+}
+
+
 function main() {
     onAuthStateChanged(auth, async (user) => {
         if (user && user.emailVerified) {
             currentUser = user;
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists() && userDocSnap.data().companyId) {
-                userData = userDocSnap.data();
-                initializeAppUI();
+
+            if (userDocSnap.exists()) {
+                const fetchedUserData = userDocSnap.data();
+                // Kontrollera om companyId finns på användardokumentet
+                if (fetchedUserData.companyId) {
+                    userData = fetchedUserData;
+                    initializeAppUI();
+                } else {
+                    // FEL: Användaren finns men saknar companyId. Detta är ett "gammalt" konto.
+                    // Visa ett felmeddelande istället för att logga ut.
+                    showFatalError("Ditt konto är inte korrekt kopplat till ett företag. Detta kan hända med konton som skapades innan företagsfunktionen lades till.");
+                }
             } else {
-                console.error("Användardata eller companyId saknas i Firestore. Loggar ut.");
-                await auth.signOut();
-                window.location.href = 'login.html';
+                // FEL: Användare finns i Auth men inte i Firestore. Mycket ovanligt.
+                showFatalError("Kunde inte hitta din användarprofil i databasen. Kontakta support eller skapa ett nytt konto.");
             }
         } else {
+            // Inte inloggad eller verifierad, skicka till inloggningssidan.
             window.location.href = 'login.html';
         }
     });
@@ -147,7 +179,8 @@ async function renderSummaryPage() {
             });
         });
 
-    } catch (error) {
+    } catch (error)
+        {
         console.error("Fel vid laddning av sammanfattning:", error);
         mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Ett databasfel inträffade. Kontrollera dina databasindex.</p></div>`;
     }
@@ -328,7 +361,7 @@ function handleSave(type, data) {
     const transactionData = { 
         ...data, 
         userId: currentUser.uid, 
-        companyId: userData.companyId, // KORRIGERING: Lägg till companyId
+        companyId: userData.companyId,
         createdAt: new Date(), 
         isCorrection: false, 
         attachmentUrl: null 
@@ -401,7 +434,7 @@ function showConfirmationModal(onConfirm) {
     container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
     document.getElementById('modal-confirm').onclick = () => {
         onConfirm();
-        container.innerHTML = ''; // Stäng modalen direkt
+        container.innerHTML = '';
     };
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
@@ -452,8 +485,6 @@ async function saveCompanyInfo() {
 async function deleteAccount() {
     if (prompt("Är du helt säker? Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
         try {
-            // Detta är en förenklad borttagning. I en riktig app behöver du en Cloud Function
-            // för att radera all associerad data (transaktioner, etc.) på ett säkert sätt.
             await deleteDoc(doc(db, 'users', currentUser.uid));
             await auth.currentUser.delete();
             window.location.href = 'login.html';
