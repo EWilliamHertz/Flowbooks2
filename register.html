@@ -12,18 +12,38 @@
         <div class="auth-box">
             <a href="index.html" class="logo-link"><h2 class="logo">FlowBooks</h2></a>
             <h3>Skapa ditt konto</h3>
+            
             <p id="auth-error" class="error-message"></p>
-            <div class="input-group"><label for="companyName">Företagsnamn</label><input type="text" id="companyName"></div>
-            <div class="input-group"><label for="email">E-post</label><input type="email" id="email"></div>
-            <div class="input-group"><label for="password">Lösenord</label><input type="password" id="password" placeholder="Minst 6 tecken"></div>
+            
+            <div class="input-group">
+                <label for="companyName">Företagsnamn</label>
+                <input type="text" id="companyName" required>
+            </div>
+            <div class="input-group">
+                <label for="email">E-post</label>
+                <input type="email" id="email" required>
+            </div>
+            <div class="input-group">
+                <label for="password">Lösenord</label>
+                <input type="password" id="password" placeholder="Minst 6 tecken" required>
+            </div>
+            
             <button id="register-btn" class="btn btn-primary btn-full-width">Skapa konto</button>
+            
             <p class="auth-switch">Har du redan ett konto? <a href="login.html">Logga in här</a></p>
         </div>
     </div>
 
     <script type="module">
-        import { auth, db } from './firebase-config.js';
+        import { getAuth, createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { app } from './firebase-config.js'; // Importera app-instansen
 
+        // Hämta Firebase-tjänster
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Hämta element från DOM
         const registerBtn = document.getElementById('register-btn');
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
@@ -31,26 +51,53 @@
         const errorEl = document.getElementById('auth-error');
 
         registerBtn.addEventListener('click', async () => {
+            // Rensa tidigare felmeddelanden
             errorEl.textContent = '';
-            if (!companyNameInput.value) {
-                errorEl.textContent = 'Vänligen fyll i företagsnamn.';
+
+            // Hämta värden från input-fälten
+            const companyName = companyNameInput.value;
+            const email = emailInput.value;
+            const password = passwordInput.value;
+
+            // Validering för att säkerställa att fälten inte är tomma
+            if (!companyName || !email || !password) {
+                errorEl.textContent = 'Vänligen fyll i alla fält.';
                 return;
             }
+
             try {
-                const userCredential = await auth.createUserWithEmailAndPassword(emailInput.value, passwordInput.value);
+                // Steg 1: Skapa användaren i Firebase Authentication
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                await db.collection('users').doc(user.uid).set({
+
+                // Steg 2: Spara ytterligare användarinformation i Firestore
+                await setDoc(doc(db, "users", user.uid), {
                     email: user.email,
-                    companyName: companyNameInput.value,
+                    companyName: companyName,
                     createdAt: new Date()
                 });
-                await user.sendEmailVerification();
-                alert(`Ett verifieringsmejl har skickats till ${user.email}. Klicka på länken och logga sedan in.`);
+
+                // Steg 3: Skicka ett verifieringsmejl
+                await sendEmailVerification(user);
+                
+                // Meddela användaren och omdirigera
+                alert(`Ett verifieringsmejl har skickats till ${user.email}. Klicka på länken i mejlet och logga sedan in.`);
                 window.location.href = 'login.html';
+
             } catch (error) {
-                if (error.code === 'auth/weak-password') errorEl.textContent = 'Lösenordet måste vara minst 6 tecken.';
-                else if (error.code === 'auth/email-already-in-use') errorEl.textContent = 'E-postadressen är redan registrerad.';
-                else errorEl.textContent = 'Kunde inte registrera användare.';
+                // Förbättrad felhantering för felsökning
+                console.error("Fullständigt registreringsfel:", error);
+
+                // Ge användarvänliga felmeddelanden baserat på felkoden
+                if (error.code === 'auth/weak-password') {
+                    errorEl.textContent = 'Lösenordet måste vara minst 6 tecken.';
+                } else if (error.code === 'auth/email-already-in-use') {
+                    errorEl.textContent = 'E-postadressen är redan registrerad.';
+                } else if (error.code === 'auth/invalid-email') {
+                    errorEl.textContent = 'Vänligen ange en giltig e-postadress.';
+                } else {
+                    errorEl.textContent = 'Kunde inte registrera. Se konsolen för teknisk information.';
+                }
             }
         });
     </script>
