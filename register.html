@@ -35,13 +35,12 @@
     </div>
 
     <script type="module">
-        import { getAuth, createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
-        import { app } from './firebase-config.js'; // Importera app-instansen
-
-        // Hämta Firebase-tjänster
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // Importera nödvändiga funktioner från Firebase SDK
+        import { createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        
+        // **KORRIGERING:** Importera de färdig-initierade 'auth' och 'db' objekten från din konfigurationsfil
+        import { auth, db } from './firebase-config.js';
 
         // Hämta element från DOM
         const registerBtn = document.getElementById('register-btn');
@@ -54,41 +53,36 @@
             // Rensa tidigare felmeddelanden
             errorEl.textContent = '';
 
-            // Hämta värden från input-fälten
             const companyName = companyNameInput.value;
             const email = emailInput.value;
             const password = passwordInput.value;
 
-            // Validering för att säkerställa att fälten inte är tomma
             if (!companyName || !email || !password) {
                 errorEl.textContent = 'Vänligen fyll i alla fält.';
                 return;
             }
 
             try {
-                // Steg 1: Skapa användaren i Firebase Authentication
+                // Använd det importerade 'auth'-objektet direkt
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
 
-                // Steg 2: Spara ytterligare användarinformation i Firestore
+                // Använd det importerade 'db'-objektet direkt för att spara användardata
                 await setDoc(doc(db, "users", user.uid), {
                     email: user.email,
                     companyName: companyName,
                     createdAt: new Date()
                 });
 
-                // Steg 3: Skicka ett verifieringsmejl
+                // Skicka verifieringsmejl
                 await sendEmailVerification(user);
                 
-                // Meddela användaren och omdirigera
                 alert(`Ett verifieringsmejl har skickats till ${user.email}. Klicka på länken i mejlet och logga sedan in.`);
                 window.location.href = 'login.html';
 
             } catch (error) {
-                // Förbättrad felhantering för felsökning
                 console.error("Fullständigt registreringsfel:", error);
 
-                // Ge användarvänliga felmeddelanden baserat på felkoden
                 if (error.code === 'auth/weak-password') {
                     errorEl.textContent = 'Lösenordet måste vara minst 6 tecken.';
                 } else if (error.code === 'auth/email-already-in-use') {
