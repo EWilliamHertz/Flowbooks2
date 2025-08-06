@@ -141,3 +141,32 @@ tr.corrected td { font-style: italic; }
 .report-result h4 { margin-bottom: 1rem; }
 .report-result p { margin-bottom: 0.5rem; display: flex; justify-content: space-between; }
 .report-result hr { border: none; border-top: 1px dashed var(--border-color); margin: 0.5rem 0; }
+
+/* --- NYTT: Stilar för Fakturor --- */
+.invoice-status {
+    padding: 0.25rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.invoice-status.paid { background-color: #e8f5e9; color: #388e3c; }
+.invoice-status.unpaid { background-color: #fff3e0; color: #f57c00; }
+.invoice-status.overdue { background-color: #ffebee; color: #d32f2f; }
+
+.invoice-details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.invoice-actions {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    background-color: var(--background-color);
+    border-radius: var(--border-radius);
+    margin-top: 1.5rem;
+}
