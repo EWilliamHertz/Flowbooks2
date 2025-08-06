@@ -11,7 +11,7 @@
 </head>
 <body>
 
-    <div id="auth-container">
+    <div id="auth-container" style="display: none;">
         <div class="auth-box">
             <h2 class="logo">FlowBooks</h2>
             <p id="auth-error" class="error-message"></p>
@@ -29,6 +29,17 @@
             </div>
         </div>
     </div>
+
+    <div id="verify-email-container" style="display: none;">
+        <div class="auth-box">
+            <h2 class="logo">FlowBooks</h2>
+            <h3>Verifiera din e-postadress</h3>
+            <p>Ett verifieringsmejl har skickats till <strong id="verification-email-address"></strong>. Vänligen klicka på länken i mejlet för att slutföra registreringen.</p>
+            <p class="info-text">Om du inte har fått något mejl, kontrollera din skräppost eller försök logga in igen för att skicka ett nytt.</p>
+            <button id="back-to-login-btn" class="btn btn-primary" style="margin-top: 1rem; width: 100%;">Tillbaka till inloggning</button>
+        </div>
+    </div>
+
 
     <div id="app-container" style="display: none;">
         <aside class="sidebar">
