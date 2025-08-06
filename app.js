@@ -1,5 +1,4 @@
 // app.js
-
 class FlowBooksApp {
     constructor() {
         this.mainView = document.getElementById('main-view');
