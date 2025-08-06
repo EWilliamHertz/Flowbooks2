@@ -6,29 +6,18 @@ import { auth, db, storage } from './firebase-config.js';
 let currentUser;
 let userData;
 
-// ----- HUVUDFUNKTIONER -----
-
-// NYTT: Funktion för att visa ett allvarligt fel som stoppar appen.
+// ----- HUVUDFUNKTIONER & FELHANTERING -----
 function showFatalError(message) {
     document.getElementById('app-container').style.visibility = 'visible';
     const mainView = document.getElementById('main-view');
-    // Rensa gränssnittet för att förhindra interaktion
     document.querySelector('.sidebar').innerHTML = '<div class="sidebar-header"><h2 class="logo">FlowBooks</h2></div>';
     document.querySelector('.main-header').innerHTML = `<div class="header-left"><h1 class="page-title">Fel</h1></div>`;
-    mainView.innerHTML = `
-        <div class="card card-danger">
-            <h3>Ett problem har uppstått</h3>
-            <p>${message}</p>
-            <p>Den rekommenderade lösningen är att skapa ett nytt konto för att säkerställa att all data är korrekt konfigurerad.</p>
-            <button id="logout-btn-error" class="btn btn-primary" style="margin-top: 1rem;">Logga ut och Registrera nytt konto</button>
-        </div>
-    `;
+    mainView.innerHTML = `<div class="card card-danger"><h3>Ett problem har uppstått</h3><p>${message}</p><p>Den rekommenderade lösningen är att skapa ett nytt konto.</p><button id="logout-btn-error" class="btn btn-primary" style="margin-top: 1rem;">Logga ut och Registrera nytt konto</button></div>`;
     document.getElementById('logout-btn-error').addEventListener('click', async () => {
         await auth.signOut();
-        window.location.href = 'register.html'; // Skicka till registrering
+        window.location.href = 'register.html';
     });
 }
-
 
 function main() {
     onAuthStateChanged(auth, async (user) => {
@@ -36,24 +25,13 @@ function main() {
             currentUser = user;
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
-
-            if (userDocSnap.exists()) {
-                const fetchedUserData = userDocSnap.data();
-                // Kontrollera om companyId finns på användardokumentet
-                if (fetchedUserData.companyId) {
-                    userData = fetchedUserData;
-                    initializeAppUI();
-                } else {
-                    // FEL: Användaren finns men saknar companyId. Detta är ett "gammalt" konto.
-                    // Visa ett felmeddelande istället för att logga ut.
-                    showFatalError("Ditt konto är inte korrekt kopplat till ett företag. Detta kan hända med konton som skapades innan företagsfunktionen lades till.");
-                }
+            if (userDocSnap.exists() && userDocSnap.data().companyId) {
+                userData = userDocSnap.data();
+                initializeAppUI();
             } else {
-                // FEL: Användare finns i Auth men inte i Firestore. Mycket ovanligt.
-                showFatalError("Kunde inte hitta din användarprofil i databasen. Kontakta support eller skapa ett nytt konto.");
+                showFatalError("Ditt konto är inte korrekt kopplat till ett företag eller saknas i databasen.");
             }
         } else {
-            // Inte inloggad eller verifierad, skicka till inloggningssidan.
             window.location.href = 'login.html';
         }
     });
@@ -87,9 +65,7 @@ function setupEventListeners() {
 function navigateTo(page) {
     document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
     const link = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
-    if (link) {
-        link.classList.add('active');
-    }
+    if (link) link.classList.add('active');
     renderPageContent(page);
 }
 
@@ -107,6 +83,7 @@ function renderPageContent(page) {
         case 'Översikt': renderDashboard(); break;
         case 'Sammanfattning': renderSummaryPage(); break;
         case 'Rapporter': renderReportsPage(); break;
+        case 'Importera': renderImportPage(); break; // NYTT CASE
         case 'Intäkter':
             newItemBtn.textContent = 'Ny Intäkt';
             newItemBtn.style.display = 'block';
@@ -124,26 +101,199 @@ function renderPageContent(page) {
     }
 }
 
+// ----- NYTT: IMPORTFUNKTIONALITET -----
+
+function renderImportPage() {
+    const mainView = document.getElementById('main-view');
+    mainView.innerHTML = `
+        <div class="card">
+            <h3 class="card-title">Importera Transaktioner från CSV</h3>
+            <p>Ladda upp en CSV-fil med dina transaktioner. Filen måste innehålla kolumnerna: <strong>Datum, Typ, Beskrivning, Summa (SEK)</strong>.</p>
+            <p>Kolumnen 'Typ' ska innehålla antingen "Intäkt" eller "Utgift". Summan ska vara ett tal.</p>
+            <input type="file" id="csv-file-input" accept=".csv" style="display: block; margin-top: 1.5rem;">
+        </div>
+    `;
+
+    document.getElementById('csv-file-input').addEventListener('change', handleFileSelect, false);
+}
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        try {
+            const transactions = parseCSV(text);
+            if (transactions.length > 0) {
+                showImportConfirmationModal(transactions);
+            } else {
+                alert("Kunde inte hitta några giltiga transaktioner i filen. Kontrollera att filen har rätt format och innehåll.");
+            }
+        } catch (error) {
+            alert(`Ett fel uppstod vid läsning av filen: ${error.message}`);
+            console.error("CSV Parse Error:", error);
+        }
+    };
+    reader.readAsText(file, 'UTF-8'); // Ange teckenkodning för att hantera ÅÄÖ
+}
+
+function parseCSV(text) {
+    const lines = text.split(/\r\n|\n/);
+    const header = lines[0].split(',').map(h => h.trim());
+    const requiredHeaders = ['Datum', 'Typ', 'Beskrivning', 'Summa (SEK)'];
+    
+    // Hitta index för varje obligatorisk kolumn
+    const idx = {
+        date: header.indexOf(requiredHeaders[0]),
+        type: header.indexOf(requiredHeaders[1]),
+        description: header.indexOf(requiredHeaders[2]),
+        amount: header.indexOf(requiredHeaders[3]),
+    };
+
+    if (Object.values(idx).some(i => i === -1)) {
+        throw new Error(`Filen saknar en eller flera av de obligatoriska kolumnerna: ${requiredHeaders.join(', ')}`);
+    }
+
+    const transactions = [];
+    for (let i = 1; i < lines.length; i++) {
+        if (!lines[i]) continue;
+        const data = lines[i].split(',');
+
+        const type = data[idx.type]?.trim();
+        if (type !== 'Intäkt' && type !== 'Utgift') continue;
+
+        const amountStr = data[idx.amount]?.replace(/"/g, '').replace(/\s/g, '').replace(',', '.');
+        const amount = parseFloat(amountStr);
+
+        if (isNaN(amount)) continue;
+
+        transactions.push({
+            date: data[idx.date]?.trim(),
+            type: type,
+            description: data[idx.description]?.trim(),
+            amount: Math.abs(amount), // Spara alltid som positivt tal
+            id: `import-${i}` // Temporärt ID för checklistan
+        });
+    }
+    return transactions;
+}
+
+function showImportConfirmationModal(transactions) {
+    const modalContainer = document.getElementById('modal-container');
+    
+    const transactionRows = transactions.map(t => `
+        <tr class="import-row">
+            <td><input type="checkbox" class="import-checkbox" data-transaction-id="${t.id}" checked></td>
+            <td>${t.date}</td>
+            <td>${t.description}</td>
+            <td class="${t.type === 'Intäkt' ? 'green' : 'red'}">${t.type}</td>
+            <td class="text-right">${t.amount.toFixed(2)} kr</td>
+        </tr>
+    `).join('');
+
+    modalContainer.innerHTML = `
+        <div class="modal-overlay">
+            <div class="modal-content" style="max-width: 800px;">
+                <h3>Granska och bekräfta import</h3>
+                <p>Verifiera transaktionerna nedan. Bocka ur de du inte vill importera.</p>
+                <div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1rem;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="select-all-checkbox" checked></th>
+                                <th>Datum</th>
+                                <th>Beskrivning</th>
+                                <th>Typ</th>
+                                <th class="text-right">Summa</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${transactionRows}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-actions">
+                    <button id="modal-cancel" class="btn btn-secondary">Avbryt</button>
+                    <button id="modal-confirm-import" class="btn btn-primary">Importera valda</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('modal-cancel').addEventListener('click', () => {
+        modalContainer.innerHTML = '';
+    });
+
+    document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
+        document.querySelectorAll('.import-checkbox').forEach(checkbox => {
+            checkbox.checked = e.target.checked;
+        });
+    });
+
+    document.getElementById('modal-confirm-import').addEventListener('click', async () => {
+        const selectedIds = Array.from(document.querySelectorAll('.import-checkbox:checked'))
+                                 .map(cb => cb.dataset.transactionId);
+        
+        const transactionsToSave = transactions.filter(t => selectedIds.includes(t.id));
+
+        if (transactionsToSave.length === 0) {
+            alert("Inga transaktioner valda.");
+            return;
+        }
+
+        const confirmBtn = document.getElementById('modal-confirm-import');
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Sparar...';
+
+        try {
+            const batch = writeBatch(db);
+            transactionsToSave.forEach(t => {
+                const collectionName = t.type === 'Intäkt' ? 'incomes' : 'expenses';
+                const docRef = doc(collection(db, collectionName));
+                
+                const dataToSave = {
+                    date: t.date,
+                    description: t.description,
+                    amount: t.amount,
+                    userId: currentUser.uid,
+                    companyId: userData.companyId,
+                    createdAt: new Date(),
+                    isCorrection: false,
+                    attachmentUrl: null
+                };
+                batch.set(docRef, dataToSave);
+            });
+
+            await batch.commit();
+            alert(`${transactionsToSave.length} transaktioner har importerats!`);
+            modalContainer.innerHTML = '';
+            navigateTo('Sammanfattning');
+        } catch (error) {
+            console.error("Fel vid import:", error);
+            alert("Ett fel uppstod när transaktionerna skulle sparas. Försök igen.");
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Importera valda';
+        }
+    });
+}
+
+// ----- BEFINTLIGA SIDOR OCH FUNKTIONER -----
+
 async function renderDashboard() {
     const mainView = document.getElementById('main-view');
     try {
         const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId));
         const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId));
         const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
-        
         const totalIncome = incomeSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
         const totalExpense = expenseSnapshot.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
         const profit = totalIncome - totalExpense;
-
-        mainView.innerHTML = `
-            <div class="dashboard-grid">
-                <div class="card text-center"><h3>Totala Intäkter</h3><p class="metric-value green">${totalIncome.toFixed(2)} kr</p></div>
-                <div class="card text-center"><h3>Totala Utgifter</h3><p class="metric-value red">${totalExpense.toFixed(2)} kr</p></div>
-                <div class="card text-center"><h3>Resultat</h3><p class="metric-value ${profit >= 0 ? 'blue' : 'red'}">${profit.toFixed(2)} kr</p></div>
-            </div>`;
+        mainView.innerHTML = `<div class="dashboard-grid"><div class="card text-center"><h3>Totala Intäkter</h3><p class="metric-value green">${totalIncome.toFixed(2)} kr</p></div><div class="card text-center"><h3>Totala Utgifter</h3><p class="metric-value red">${totalExpense.toFixed(2)} kr</p></div><div class="card text-center"><h3>Resultat</h3><p class="metric-value ${profit >= 0 ? 'blue' : 'red'}">${profit.toFixed(2)} kr</p></div></div>`;
     } catch (error) {
         console.error("Fel vid laddning av dashboard:", error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Ett databasfel inträffade. Kontrollera att dina databasindex är korrekt skapade och att du har behörighet.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda översikt</h3><p>Ett databasfel inträffade.</p></div>`;
     }
 }
 
@@ -153,36 +303,24 @@ async function renderSummaryPage() {
         const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId));
         const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId));
         const [incomeSnapshot, expenseSnapshot] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
-
         let allTransactions = [];
         incomeSnapshot.forEach(doc => allTransactions.push({ id: doc.id, type: 'income', ...doc.data() }));
         expenseSnapshot.forEach(doc => allTransactions.push({ id: doc.id, type: 'expense', ...doc.data() }));
-
         allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-
         const rows = allTransactions.map(t => {
             const actionCell = t.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${t.id}" data-type="${t.type}">Korrigera</button></td>`;
-            return `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}">
-                <td>${t.date}</td>
-                <td>${t.description}</td>
-                <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>
-                ${actionCell}
-            </tr>`;
+            return `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}"><td>${t.date}</td><td>${t.description}</td><td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>${actionCell}</tr>`;
         }).join('');
-
         mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th><th>Åtgärd</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Inga transaktioner att visa.</td></tr>'}</tbody></table></div>`;
-        
         mainView.querySelectorAll('.btn-correction').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const { id, type } = e.target.dataset;
                 renderCorrectionForm(type, id);
             });
         });
-
-    } catch (error)
-        {
+    } catch (error) {
         console.error("Fel vid laddning av sammanfattning:", error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Ett databasfel inträffade. Kontrollera dina databasindex.</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda sammanfattning</h3><p>Ett databasfel inträffade.</p></div>`;
     }
 }
 
@@ -190,26 +328,22 @@ async function renderTransactionList(type) {
     const mainView = document.getElementById('main-view');
     const collectionName = type === 'income' ? 'incomes' : 'expenses';
     const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
-    
     try {
         const q = query(collection(db, collectionName), where('companyId', '==', userData.companyId), orderBy('date', 'desc'));
         const snapshot = await getDocs(q);
-
         const rows = snapshot.docs.map(doc => {
             const data = doc.data();
             const actionCell = data.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${doc.id}" data-type="${type}">Korrigera</button></td>`;
             const attachmentCell = data.attachmentUrl ? `<td><a href="${data.attachmentUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>';
             return `<tr class="${data.isCorrection ? 'corrected' : ''}"><td>${data.date}</td><td>${data.description}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${attachmentCell}<td>${actionCell}</td></tr>`;
         }).join('');
-
         mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3><table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th class="text-right">Summa</th><th>Underlag</th><th>Åtgärd</th></tr></thead><tbody>${rows || `<tr><td colspan="5">Inga ${type === 'income' ? 'intäkter' : 'utgifter'} att visa.</td></tr>`}</tbody></table></div>`;
-        
         mainView.querySelectorAll('.btn-correction').forEach(btn => {
             btn.addEventListener('click', (e) => renderCorrectionForm(e.target.dataset.type, e.target.dataset.id));
         });
     } catch (error) {
         console.error(`Fel vid laddning av ${collectionName}:`, error);
-        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera databasindex för '${collectionName}'. Fel: ${error.message}</p></div>`;
+        mainView.innerHTML = `<div class="card card-danger"><h3>Kunde inte ladda ${title}</h3><p>Kontrollera databasindex för '${collectionName}'.</p></div>`;
     }
 }
 
@@ -218,26 +352,10 @@ function renderTransactionForm(type, originalData = {}, isCorrection = false, or
     const title = isCorrection ? 'Korrigera Transaktion' : `Registrera Ny ${type === 'income' ? 'Intäkt' : 'Utgift'}`;
     const today = new Date().toISOString().slice(0, 10);
     const fileUploadField = `<div class="input-group"><label>Underlag (valfritt)</label><input id="trans-attachment" type="file" accept="image/*,.pdf"></div>`;
-
-    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3>
-        ${isCorrection ? `<p class="correction-notice">Du skapar nu en rättelsepost. Den gamla posten nollställs och en ny, korrekt post skapas.</p>` : ''}
-        <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${originalData.date || today}"></div>
-        <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text" value="${originalData.description || ''}"></div>
-        <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00" value="${originalData.amount || ''}"></div>
-        ${fileUploadField}
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">${isCorrection ? 'Spara Rättelse' : 'Spara'}</button></div></div>`;
-    
+    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3 class="card-title">${title}</h3>${isCorrection ? `<p class="correction-notice">Du skapar nu en rättelsepost.</p>` : ''}<div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${originalData.date || today}"></div><div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text" value="${originalData.description || ''}"></div><div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00" value="${originalData.amount || ''}"></div>${fileUploadField}<div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">${isCorrection ? 'Spara Rättelse' : 'Spara'}</button></div></div>`;
     document.getElementById('save-btn').addEventListener('click', () => {
-        const newData = {
-            date: document.getElementById('trans-date').value,
-            description: document.getElementById('trans-desc').value,
-            amount: parseFloat(document.getElementById('trans-amount').value) || 0,
-        };
-        if (isCorrection) {
-            handleCorrectionSave(type, originalId, originalData, newData);
-        } else {
-            handleSave(type, newData);
-        }
+        const newData = { date: document.getElementById('trans-date').value, description: document.getElementById('trans-desc').value, amount: parseFloat(document.getElementById('trans-amount').value) || 0 };
+        if (isCorrection) { handleCorrectionSave(type, originalId, originalData, newData); } else { handleSave(type, newData); }
     });
     document.getElementById('cancel-btn').addEventListener('click', () => navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter'));
 }
@@ -246,33 +364,12 @@ async function renderCorrectionForm(type, docId) {
     const collectionName = type === 'income' ? 'incomes' : 'expenses';
     const docRef = doc(db, collectionName, docId);
     const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        renderTransactionForm(type, docSnap.data(), true, docId);
-    } else {
-        alert("Kunde inte hitta den ursprungliga transaktionen.");
-    }
+    if (docSnap.exists()) { renderTransactionForm(type, docSnap.data(), true, docId); } else { alert("Kunde inte hitta den ursprungliga transaktionen."); }
 }
 
-// ----- RAPPORTER -----
 function renderReportsPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `
-        <div class="settings-grid">
-            <div class="card">
-                <h3 class="card-title">Momsrapport (Förenklad)</h3>
-                <p>Välj en period för att beräkna moms. Detta är en förenklad rapport som antar 25% moms på allt.</p>
-                <div class="input-group"><label>Startdatum</label><input type="date" id="vat-start"></div>
-                <div class="input-group"><label>Slutdatum</label><input type="date" id="vat-end"></div>
-                <button id="generate-vat-btn" class="btn btn-primary">Generera Momsrapport</button>
-                <div id="vat-result" class="report-result"></div>
-            </div>
-            <div class="card">
-                <h3 class="card-title">Dataexport (SIE4)</h3>
-                <p>Exportera all din bokföringsdata för innevarande år till en SIE4-fil. Denna fil kan du ge till din redovisningskonsult eller importera i ett annat program.</p>
-                <button id="export-sie-btn" class="btn btn-primary">Exportera SIE4-fil</button>
-            </div>
-        </div>
-    `;
+    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3 class="card-title">Momsrapport (Förenklad)</h3><p>Välj en period för att beräkna moms.</p><div class="input-group"><label>Startdatum</label><input type="date" id="vat-start"></div><div class="input-group"><label>Slutdatum</label><input type="date" id="vat-end"></div><button id="generate-vat-btn" class="btn btn-primary">Generera Momsrapport</button><div id="vat-result" class="report-result"></div></div><div class="card"><h3 class="card-title">Dataexport (SIE4)</h3><p>Exportera din bokföringsdata till en SIE4-fil.</p><button id="export-sie-btn" class="btn btn-primary">Exportera SIE4-fil</button></div></div>`;
     document.getElementById('generate-vat-btn').addEventListener('click', generateVatReport);
     document.getElementById('export-sie-btn').addEventListener('click', exportSieFile);
 }
@@ -281,32 +378,17 @@ async function generateVatReport() {
     const startDate = document.getElementById('vat-start').value;
     const endDate = document.getElementById('vat-end').value;
     const resultDiv = document.getElementById('vat-result');
-    if (!startDate || !endDate) {
-        alert("Välj start- och slutdatum.");
-        return;
-    }
+    if (!startDate || !endDate) { alert("Välj start- och slutdatum."); return; }
     resultDiv.innerHTML = `<p>Beräknar...</p>`;
-
     const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId), where('date', '>=', startDate), where('date', '<=', endDate));
     const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId), where('date', '>=', startDate), where('date', '<=', endDate));
     const [incomeSnap, expenseSnap] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
-
     const totalSales = incomeSnap.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
-    const outgoingVat = totalSales * 0.20; // 25% moms -> 20% av totalbeloppet
+    const outgoingVat = totalSales * 0.20;
     const totalPurchases = expenseSnap.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
     const incomingVat = totalPurchases * 0.20;
     const vatToPay = outgoingVat - incomingVat;
-
-    resultDiv.innerHTML = `
-        <h4>Resultat för ${startDate} till ${endDate}</h4>
-        <p><strong>Försäljning exkl. moms:</strong> ${ (totalSales - outgoingVat).toFixed(2) } kr</p>
-        <p><strong>Utgående moms (25%):</strong> ${ outgoingVat.toFixed(2) } kr</p>
-        <hr>
-        <p><strong>Inköp exkl. moms:</strong> ${ (totalPurchases - incomingVat).toFixed(2) } kr</p>
-        <p><strong>Ingående moms (avdragsgill):</strong> ${ incomingVat.toFixed(2) } kr</p>
-        <hr>
-        <p><strong>Moms att ${vatToPay >= 0 ? 'betala' : 'få tillbaka'}:</strong> <strong class="${vatToPay >= 0 ? 'red' : 'green'}">${Math.abs(vatToPay).toFixed(2)} kr</strong></p>
-    `;
+    resultDiv.innerHTML = `<h4>Resultat för ${startDate} till ${endDate}</h4><p><strong>Försäljning exkl. moms:</strong> ${(totalSales - outgoingVat).toFixed(2)} kr</p><p><strong>Utgående moms (25%):</strong> ${outgoingVat.toFixed(2)} kr</p><hr><p><strong>Inköp exkl. moms:</strong> ${(totalPurchases - incomingVat).toFixed(2)} kr</p><p><strong>Ingående moms (avdragsgill):</strong> ${incomingVat.toFixed(2)} kr</p><hr><p><strong>Moms att ${vatToPay >= 0 ? 'betala' : 'få tillbaka'}:</strong> <strong class="${vatToPay >= 0 ? 'red' : 'green'}">${Math.abs(vatToPay).toFixed(2)} kr</strong></p>`;
 }
 
 async function exportSieFile() {
@@ -315,13 +397,11 @@ async function exportSieFile() {
     const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', userData.companyId));
     const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', userData.companyId));
     const [incomeSnap, expenseSnap] = await Promise.all([getDocs(incomeQuery), getDocs(expenseQuery)]);
-
     let transactions = [];
     incomeSnap.forEach(doc => transactions.push({ type: 'income', ...doc.data() }));
     expenseSnap.forEach(doc => transactions.push({ type: 'expense', ...doc.data() }));
     transactions = transactions.filter(t => new Date(t.date).getFullYear() === year);
     transactions.sort((a, b) => new Date(a.date) - new Date(b.date));
-
     let sieContent = `#FLAGGA 0\r\n`;
     sieContent += `#PROGRAM "FlowBooks 1.0"\r\n`;
     sieContent += `#FORMAT PC8\r\n`;
@@ -332,7 +412,6 @@ async function exportSieFile() {
     sieContent += `#KONTO 1930 "Företagskonto"\r\n`;
     sieContent += `#KONTO 3010 "Försäljning"\r\n`;
     sieContent += `#KONTO 6100 "Kontorsmaterial & Förbrukningsvaror"\r\n`;
-
     transactions.forEach((t, index) => {
         const date = t.date.replace(/-/g, '');
         const verNum = index + 1;
@@ -346,7 +425,6 @@ async function exportSieFile() {
         }
         sieContent += `}\r\n`;
     });
-
     const blob = new Blob([sieContent], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -355,28 +433,17 @@ async function exportSieFile() {
     URL.revokeObjectURL(link.href);
 }
 
-// ----- TRANSAKTIONSHANTERING -----
 function handleSave(type, data) {
     const attachmentFile = document.getElementById('trans-attachment').files[0];
-    const transactionData = { 
-        ...data, 
-        userId: currentUser.uid, 
-        companyId: userData.companyId,
-        createdAt: new Date(), 
-        isCorrection: false, 
-        attachmentUrl: null 
-    };
-    
+    const transactionData = { ...data, userId: currentUser.uid, companyId: userData.companyId, createdAt: new Date(), isCorrection: false, attachmentUrl: null };
     if (!transactionData.date || !transactionData.description || transactionData.amount === 0) {
         alert('Vänligen fyll i datum, beskrivning och en summa.');
         return;
     }
-
     showConfirmationModal(async () => {
         const saveButton = document.getElementById('modal-confirm');
         saveButton.disabled = true;
         saveButton.textContent = 'Sparar...';
-
         if (attachmentFile) {
             const folder = type === 'income' ? 'income_attachments' : 'expense_attachments';
             const storageRef = ref(storage, `${folder}/${currentUser.uid}/${Date.now()}-${attachmentFile.name}`);
@@ -401,18 +468,14 @@ async function handleCorrectionSave(type, originalId, originalData, newData) {
     showConfirmationModal(async () => {
         const batch = writeBatch(db);
         const collectionName = type === 'income' ? 'incomes' : 'expenses';
-
         const originalDocRef = doc(db, collectionName, originalId);
         batch.update(originalDocRef, { isCorrection: true });
-        
         const reversalPost = { ...originalData, amount: -originalData.amount, isCorrection: true, correctedPostId: originalId, description: `Rättelse av: ${originalData.description}`, createdAt: new Date() };
         const reversalDocRef = doc(collection(db, collectionName));
         batch.set(reversalDocRef, reversalPost);
-
         const newPost = { ...newData, userId: currentUser.uid, companyId: userData.companyId, createdAt: new Date(), isCorrection: false, correctsPostId: originalId };
         const newDocRef = doc(collection(db, collectionName));
         batch.set(newDocRef, newPost);
-        
         await batch.commit();
         navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter');
     });
@@ -430,16 +493,12 @@ async function saveTransaction(type, data) {
 }
 
 function showConfirmationModal(onConfirm) {
-    const container = document.getElementById('confirmation-modal-container');
-    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
-    document.getElementById('modal-confirm').onclick = () => {
-        onConfirm();
-        container.innerHTML = '';
-    };
+    const container = document.getElementById('modal-container');
+    container.innerHTML = `<div class="modal-overlay"><div class="modal-content"><h3>Bekräfta Bokföring</h3><p>Enligt Bokföringslagen är detta en slutgiltig aktion. Posten kan inte ändras eller raderas i efterhand.</p><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm" class="btn btn-primary">Bekräfta och Bokför</button></div></div></div>`;
+    document.getElementById('modal-confirm').onclick = () => { onConfirm(); container.innerHTML = ''; };
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
 
-// ----- INSTÄLLNINGAR -----
 function updateProfileIcon() {
     const profileIcon = document.getElementById('user-profile-icon');
     if (userData?.profileImageURL) {
