@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | FlowBooks</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2 class="logo">FlowBooks</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a href="#" class="active" data-page="Översikt">Översikt</a></li>
+                    <li><a href="#" data-page="Intäkter">Intäkter (Fakturor)</a></li>
+                    <li><a href="#" data-page="Utgifter">Utgifter (Kvitton)</a></li>
+                    <li><a href="#" data-page="Bank">Bank</a></li>
+                    <li><a href="#" data-page="Rapporter">Rapporter</a></li>
+                    <li><a href="#" data-page="Inställningar">Inställningar</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <button class="menu-toggle" id="menu-toggle-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
+                    <h1 class="page-title">Översikt</h1>
+                </div>
+                <div class="header-right">
+                    <button id="new-item-btn" class="btn btn-primary">Ny Faktura</button>
+                    <div class="profile-container">
+                        <div id="user-profile-icon" class="user-profile"></div>
+                        <div id="profile-dropdown" class="profile-dropdown">
+                            <a href="#" id="settings-link">Inställningar</a>
+                            <a href="#" id="logout-btn">Logga ut</a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main id="main-view"></main>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+    
+    <script src="app.js" type="module"></script>
+</body>
+</html>
