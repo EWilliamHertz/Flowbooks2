@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | FlowBooks</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Auth Guard: Denna script-tag körs först för att skydda sidan -->
+    <script type="module">
+        import { auth } from './firebase-config.js';
+        auth.onAuthStateChanged(user => {
+            if (!user || !user.emailVerified) {
+                window.location.href = 'login.html';
+            }
+        });
+    </script>
+
+    <div id="app-container" style="visibility: hidden;"> <!-- Dölj tills vi vet att användaren är inloggad -->
+        <aside class="sidebar">
+            <div class="sidebar-header"><h2 class="logo">FlowBooks</h2></div>
+            <nav class="sidebar-nav"><ul>
+                <li><a href="#" class="active" data-page="Översikt">Översikt</a></li>
+                <li><a href="#" data-page="Utgifter">Utgifter</a></li>
+                <li><a href="#" data-page="Inställningar">Inställningar</a></li>
+            </ul></nav>
+        </aside>
+        <div class="main-content">
+            <header class="main-header">
+                <div class="header-left"><h1 class="page-title">Översikt</h1></div>
+                <div class="header-right">
+                    <button id="new-item-btn" class="btn btn-primary"></button>
+                    <div class="profile-container">
+                        <div id="user-profile-icon" class="user-profile"></div>
+                        <div id="profile-dropdown" class="profile-dropdown">
+                            <a href="#" id="settings-link">Inställningar</a>
+                            <a href="#" id="logout-btn">Logga ut</a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            <main id="main-view"></main>
+        </div>
+    </div>
+    
+    <script src="app.js" type="module"></script>
+</body>
+</html>
