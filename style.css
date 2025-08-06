@@ -245,3 +245,104 @@ main {
         display: none; /* Dölj hamburgare på desktop */
     }
 }
+
+/* --- Autentiserings-vy --- */
+#auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: var(--background-color);
+}
+
+.auth-box {
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    background: var(--card-background);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    text-align: center;
+}
+
+.auth-box .logo {
+    margin-bottom: 2rem;
+}
+
+.input-group {
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--text-color-light);
+}
+
+.input-group input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    font-family: var(--font-family);
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+}
+
+.auth-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+.auth-buttons .btn {
+    flex-grow: 1;
+}
+
+.error-message {
+    color: #e74c3c;
+    margin-bottom: 1rem;
+    min-height: 20px;
+}
+
+/* --- Andra justeringar --- */
+.btn-secondary {
+    background-color: #e9ecef;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+.btn-secondary:hover {
+    background-color: #dee2e6;
+}
+
+.btn-danger {
+    background-color: #e74c3c;
+    color: white;
+}
+.btn-danger:hover {
+    background-color: #c0392b;
+}
+
+.sidebar-footer {
+    padding: 1.5rem;
+    margin-top: auto; /* Flyttar ner knappen */
+}
+.sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-profile .profile-avatar {
+    background-color: var(--primary-color);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: 600;
+}
