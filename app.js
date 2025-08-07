@@ -18,8 +18,8 @@ let allIncomes = [];
 let allExpenses = [];
 let allTransactions = [];
 let recurringTransactions = [];
-// NYTT: Global variabel för kategorier
 let categories = [];
+let teamMembers = [];
 
 // ----- Funktion för Moderna Notiser (Toasts) -----
 function showToast(message, type = 'info') {
@@ -76,20 +76,22 @@ async function fetchAllCompanyData() {
         const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', companyId));
         const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', companyId));
         const recurringQuery = query(collection(db, 'recurring'), where('companyId', '==', companyId));
-        // NYTT: Hämta kategorier
         const categoryQuery = query(collection(db, 'categories'), where('companyId', '==', companyId), orderBy('name'));
+        const teamQuery = query(collection(db, 'users'), where('companyId', '==', companyId));
         
-        const [incomeSnapshot, expenseSnapshot, recurringSnapshot, categorySnapshot] = await Promise.all([
+        const [incomeSnapshot, expenseSnapshot, recurringSnapshot, categorySnapshot, teamSnapshot] = await Promise.all([
             getDocs(incomeQuery), 
             getDocs(expenseQuery),
             getDocs(recurringQuery),
-            getDocs(categoryQuery) // NYTT
+            getDocs(categoryQuery),
+            getDocs(teamQuery)
         ]);
         
         allIncomes = incomeSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         allExpenses = expenseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         recurringTransactions = recurringSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        categories = categorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); // NYTT
+        categories = categorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        teamMembers = teamSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         
         allTransactions = [
             ...allIncomes.map(t => ({ ...t, type: 'income' })),
@@ -171,17 +173,92 @@ function renderPageContent(page) {
             newItemBtn.onclick = () => renderRecurringTransactionForm();
             renderRecurringPage();
             break;
-        case 'Kategorier':
-            renderCategoriesPage();
-            break;
+        case 'Kategorier': renderCategoriesPage(); break;
+        case 'Team': renderTeamPage(); break;
         case 'Inställningar': renderSettingsPage(); break;
         default: mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan '${page}' hittades inte</h3></div>`;
     }
 }
 
+// ----- TEAM -----
+function renderTeamPage() {
+    const mainView = document.getElementById('main-view');
+    mainView.innerHTML = `
+        <div class="settings-grid">
+            <div class="card">
+                <h3 class="card-title">Teammedlemmar</h3>
+                <p>Personer med tillgång till företaget <strong>${userData.companyName}</strong>.</p>
+                <div id="team-list-container" style="margin-top: 1.5rem;">${renderSpinner()}</div>
+            </div>
+            <div class="card">
+                <h3 class="card-title">Bjud in ny medlem</h3>
+                <p>Personen kan skapa ett konto för att ansluta till ditt företag.</p>
+                <div class="input-group"><label for="invite-email">E-postadress</label><input type="email" id="invite-email" placeholder="namn@exempel.com"></div>
+                <button id="send-invite-btn" class="btn btn-primary" style="margin-top: 1rem;">Skicka inbjudan</button>
+            </div>
+        </div>`;
 
-// ----- KATEGORIER (NYTT) -----
+    renderTeamList();
 
+    document.getElementById('send-invite-btn').addEventListener('click', async () => {
+        const emailInput = document.getElementById('invite-email');
+        const email = emailInput.value.trim().toLowerCase();
+        
+        if (!email) {
+            showToast('Ange en giltig e-postadress.', 'warning');
+            return;
+        }
+
+        try {
+            const isMember = teamMembers.some(member => member.email === email);
+            if (isMember) {
+                showToast('Denna användare är redan medlem.', 'warning');
+                return;
+            }
+
+            const invitationsRef = collection(db, 'invitations');
+            const q = query(invitationsRef, where("email", "==", email), where("companyId", "==", userData.companyId));
+            const existingInvite = await getDocs(q);
+
+            if (!existingInvite.empty) {
+                showToast('En inbjudan har redan skickats till denna e-post.', 'warning');
+                return;
+            }
+
+            await addDoc(invitationsRef, {
+                email: email,
+                companyId: userData.companyId,
+                companyName: userData.companyName,
+                invitedBy: currentUser.uid,
+                createdAt: serverTimestamp()
+            });
+
+            showToast(`Inbjudan skickad till ${email}!`, 'success');
+            emailInput.value = '';
+
+        } catch (error) {
+            console.error("Kunde inte skicka inbjudan:", error);
+            showToast('Ett fel uppstod. Försök igen.', 'error');
+        }
+    });
+}
+
+function renderTeamList() {
+    const container = document.getElementById('team-list-container');
+    if (!container) return;
+    const memberItems = teamMembers.map(member => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
+            <div>
+                <p style="font-weight: 600; margin: 0;">${member.firstName} ${member.lastName}</p>
+                <p style="font-size: 0.9rem; color: var(--text-color-light); margin: 0;">${member.position}</p>
+            </div>
+            <span>${member.email}</span>
+        </div>`).join('');
+    container.innerHTML = memberItems;
+}
+
+
+// ----- KATEGORIER -----
 function renderCategoriesPage() {
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = `
@@ -189,23 +266,15 @@ function renderCategoriesPage() {
             <div class="card">
                 <h3 class="card-title">Mina Kategorier</h3>
                 <p>Lägg till och hantera kategorier för att organisera dina transaktioner.</p>
-                <div id="category-list-container" style="margin-top: 1.5rem;">
-                    ${renderSpinner()}
-                </div>
+                <div id="category-list-container" style="margin-top: 1.5rem;">${renderSpinner()}</div>
             </div>
             <div class="card">
                 <h3 class="card-title">Skapa Ny Kategori</h3>
-                <div class="input-group">
-                    <label for="new-category-name">Kategorinamn</label>
-                    <input type="text" id="new-category-name" placeholder="T.ex. Kontorsmaterial">
-                </div>
+                <div class="input-group"><label for="new-category-name">Kategorinamn</label><input type="text" id="new-category-name" placeholder="T.ex. Kontorsmaterial"></div>
                 <button id="save-category-btn" class="btn btn-primary" style="margin-top: 1rem;">Spara Kategori</button>
             </div>
-        </div>
-    `;
-
+        </div>`;
     renderCategoryList();
-
     document.getElementById('save-category-btn').addEventListener('click', async () => {
         const nameInput = document.getElementById('new-category-name');
         const name = nameInput.value.trim();
@@ -213,20 +282,15 @@ function renderCategoriesPage() {
             showToast('Ange ett namn för kategorin.', 'warning');
             return;
         }
-
         try {
-            await addDoc(collection(db, 'categories'), {
-                name: name,
-                companyId: userData.companyId,
-                createdAt: serverTimestamp()
-            });
+            await addDoc(collection(db, 'categories'), { name, companyId: userData.companyId, createdAt: serverTimestamp() });
             showToast('Kategori sparad!', 'success');
             nameInput.value = '';
             await fetchAllCompanyData();
             renderCategoryList();
         } catch (error) {
             console.error("Kunde inte spara kategori:", error);
-            showToast('Ett fel uppstod när kategorin skulle sparas.', 'error');
+            showToast('Ett fel uppstod.', 'error');
         }
     });
 }
@@ -234,25 +298,20 @@ function renderCategoriesPage() {
 function renderCategoryList() {
     const container = document.getElementById('category-list-container');
     if (!container) return;
-
     if (categories.length === 0) {
         container.innerHTML = '<p>Du har inte skapat några kategorier än.</p>';
         return;
     }
-
     const categoryItems = categories.map(cat => `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
             <span>${cat.name}</span>
             <button class="btn btn-danger" data-id="${cat.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Ta bort</button>
-        </div>
-    `).join('');
-
+        </div>`).join('');
     container.innerHTML = categoryItems;
-
     container.querySelectorAll('.btn-danger').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const id = e.target.dataset.id;
-            if (confirm('Är du säker? Om du tar bort kategorin kommer den försvinna från alla transaktioner den är kopplad till.')) {
+            if (confirm('Är du säker? Kategorin försvinner från alla kopplade transaktioner.')) {
                 try {
                     await deleteDoc(doc(db, 'categories', id));
                     showToast('Kategori borttagen.', 'success');
@@ -269,21 +328,18 @@ function renderCategoryList() {
 
 
 // ----- ÅTERKOMMANDE TRANSAKTIONER -----
-
 function renderRecurringPage() {
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = `
         <div class="card">
             <h3 class="card-title">Hantering av Återkommande Transaktioner</h3>
-            <p>Här visas dina schemalagda intäkter och utgifter. De genereras automatiskt varje månad.</p>
+            <p>Schemalagda intäkter och utgifter som skapas automatiskt varje månad.</p>
             <button id="run-recurring-btn" class="btn btn-secondary" style="margin-top: 1rem;">Simulera månadskörning</button>
         </div>
         <div class="card" style="margin-top: 1.5rem;">
             <h3 class="card-title">Mina Återkommande Transaktioner</h3>
             <div id="recurring-list-container">${renderSpinner()}</div>
-        </div>
-    `;
-
+        </div>`;
     document.getElementById('run-recurring-btn').addEventListener('click', runRecurringTransactions);
     renderRecurringList();
 }
@@ -291,7 +347,6 @@ function renderRecurringPage() {
 function renderRecurringList() {
     const container = document.getElementById('recurring-list-container');
     if (!container) return;
-    
     const rows = recurringTransactions.map(item => `
         <tr>
             <td>${item.type === 'income' ? 'Intäkt' : 'Utgift'}</td>
@@ -301,42 +356,20 @@ function renderRecurringList() {
             <td>Varje månad</td>
             <td>${item.nextDueDate}</td>
             <td><button class="btn btn-danger" data-id="${item.id}" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">Ta bort</button></td>
-        </tr>
-    `).join('');
-
-    const table = `
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Typ</th>
-                    <th>Beskrivning</th>
-                    <th>Motpart</th>
-                    <th class="text-right">Summa</th>
-                    <th>Frekvens</th>
-                    <th>Nästa Datum</th>
-                    <th>Åtgärd</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows.length > 0 ? rows : `<tr><td colspan="7" class="text-center">Du har inga återkommande transaktioner.</td></tr>`}
-            </tbody>
-        </table>
-    `;
-    
-    container.innerHTML = table;
-
+        </tr>`).join('');
+    container.innerHTML = `<table class="data-table"><thead><tr><th>Typ</th><th>Beskrivning</th><th>Motpart</th><th class="text-right">Summa</th><th>Frekvens</th><th>Nästa Datum</th><th>Åtgärd</th></tr></thead><tbody>${rows.length > 0 ? rows : `<tr><td colspan="7" class="text-center">Du har inga återkommande transaktioner.</td></tr>`}</tbody></table>`;
     container.querySelectorAll('.btn-danger').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const id = e.target.dataset.id;
-            if (confirm('Är du säker på att du vill ta bort denna återkommande transaktion?')) {
+            if (confirm('Är du säker?')) {
                 try {
                     await deleteDoc(doc(db, 'recurring', id));
                     await fetchAllCompanyData();
                     renderRecurringList();
                     showToast('Återkommande transaktion borttagen.', 'success');
                 } catch (error) {
-                    console.error("Kunde inte ta bort återkommande transaktion:", error);
-                    showToast('Kunde inte ta bort transaktionen.', 'error');
+                    console.error("Kunde inte ta bort:", error);
+                    showToast('Kunde inte ta bort.', 'error');
                 }
             }
         });
@@ -346,129 +379,65 @@ function renderRecurringList() {
 function renderRecurringTransactionForm() {
     const mainView = document.getElementById('main-view');
     const today = new Date().toISOString().slice(0, 10);
-    mainView.innerHTML = `
-        <div class="card" style="max-width: 600px; margin: auto;">
-            <h3 class="card-title">Skapa Ny Återkommande Transaktion</h3>
-            <div class="input-group">
-                <label>Typ</label>
-                <select id="rec-type">
-                    <option value="expense">Utgift</option>
-                    <option value="income">Intäkt</option>
-                </select>
-            </div>
-            <div class="input-group">
-                <label>Startdatum (första generering)</label>
-                <input id="rec-date" type="date" value="${today}">
-            </div>
-            <div class="input-group">
-                <label>Beskrivning</label>
-                <input id="rec-desc" type="text" placeholder="T.ex. Månadshyra, Programvara...">
-            </div>
-            <div class="input-group">
-                <label>Motpart (Kund/Leverantör)</label>
-                <input id="rec-party" type="text">
-            </div>
-            <div class="input-group">
-                <label>Summa (SEK)</label>
-                <input id="rec-amount" type="number" placeholder="0.00">
-            </div>
-            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                <button id="cancel-btn" class="btn btn-secondary">Avbryt</button>
-                <button id="save-btn" class="btn btn-primary">Spara Återkommande</button>
-            </div>
-        </div>
-    `;
-
+    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3>Skapa Ny Återkommande Transaktion</h3><div class="input-group"><label>Typ</label><select id="rec-type"><option value="expense">Utgift</option><option value="income">Intäkt</option></select></div><div class="input-group"><label>Startdatum</label><input id="rec-date" type="date" value="${today}"></div><div class="input-group"><label>Beskrivning</label><input id="rec-desc" type="text"></div><div class="input-group"><label>Motpart</label><input id="rec-party" type="text"></div><div class="input-group"><label>Summa (SEK)</label><input id="rec-amount" type="number" placeholder="0.00"></div><div style="display: flex; gap: 1rem; margin-top: 1.5rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">Spara</button></div></div>`;
     document.getElementById('save-btn').addEventListener('click', async () => {
         const saveBtn = document.getElementById('save-btn');
         saveBtn.disabled = true;
         saveBtn.textContent = 'Sparar...';
-
-        const data = {
-            type: document.getElementById('rec-type').value,
-            nextDueDate: document.getElementById('rec-date').value,
-            description: document.getElementById('rec-desc').value,
-            party: document.getElementById('rec-party').value,
-            amount: parseFloat(document.getElementById('rec-amount').value) || 0,
-            frequency: 'monthly',
-            userId: currentUser.uid,
-            companyId: userData.companyId,
-            createdAt: serverTimestamp()
-        };
-
+        const data = { type: document.getElementById('rec-type').value, nextDueDate: document.getElementById('rec-date').value, description: document.getElementById('rec-desc').value, party: document.getElementById('rec-party').value, amount: parseFloat(document.getElementById('rec-amount').value) || 0, frequency: 'monthly', userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp() };
         if (!data.nextDueDate || !data.description || data.amount <= 0) {
-            showToast('Fyll i alla fält korrekt (summan måste vara större än noll).', 'warning');
+            showToast('Fyll i alla fält korrekt.', 'warning');
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Spara Återkommande';
+            saveBtn.textContent = 'Spara';
             return;
         }
-
         try {
             await addDoc(collection(db, 'recurring'), data);
             await fetchAllCompanyData();
             navigateTo('Återkommande');
-            showToast('Ny återkommande transaktion sparad!', 'success');
+            showToast('Sparad!', 'success');
         } catch (error) {
-            console.error("Kunde inte spara återkommande transaktion:", error);
-            showToast('Ett fel uppstod vid sparning.', 'error');
+            console.error("Kunde inte spara:", error);
+            showToast('Ett fel uppstod.', 'error');
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Spara Återkommande';
+            saveBtn.textContent = 'Spara';
         }
     });
-
     document.getElementById('cancel-btn').addEventListener('click', () => navigateTo('Återkommande'));
 }
 
 async function runRecurringTransactions() {
     const todayStr = new Date().toISOString().slice(0, 10);
     const transactionsToCreate = recurringTransactions.filter(item => item.nextDueDate && item.nextDueDate <= todayStr);
-    
     if (transactionsToCreate.length === 0) {
         showToast("Inga återkommande transaktioner att generera idag.", "info");
         return;
     }
-
     const runBtn = document.getElementById('run-recurring-btn');
     runBtn.disabled = true;
     runBtn.textContent = 'Genererar...';
-
     const batch = writeBatch(db);
     let count = 0;
-
     for (const item of transactionsToCreate) {
         const collectionName = item.type === 'income' ? 'incomes' : 'expenses';
         const docRef = doc(collection(db, collectionName));
-        const transactionData = {
-            date: item.nextDueDate,
-            description: item.description,
-            party: item.party,
-            amount: item.amount,
-            userId: item.userId,
-            companyId: item.companyId,
-            createdAt: serverTimestamp(),
-            isCorrection: false,
-            attachmentUrl: null,
-            generatedFromRecurring: true
-        };
+        const transactionData = { date: item.nextDueDate, description: item.description, party: item.party, amount: item.amount, userId: item.userId, companyId: item.companyId, createdAt: serverTimestamp(), isCorrection: false, attachmentUrl: null, generatedFromRecurring: true };
         batch.set(docRef, transactionData);
         count++;
-        
         const nextDate = new Date(item.nextDueDate);
         nextDate.setMonth(nextDate.getMonth() + 1);
         const newDueDate = nextDate.toISOString().slice(0, 10);
-        
         const recurringDocRef = doc(db, 'recurring', item.id);
         batch.update(recurringDocRef, { nextDueDate: newDueDate });
     }
-
     try {
         await batch.commit();
         await fetchAllCompanyData();
         renderRecurringList();
         showToast(`${count} transaktion(er) har skapats automatiskt!`, 'success');
     } catch (error) {
-        console.error("Fel vid generering av återkommande transaktioner:", error);
-        showToast("Ett fel uppstod vid generering.", "error");
+        console.error("Fel vid generering:", error);
+        showToast("Ett fel uppstod.", "error");
     } finally {
         runBtn.disabled = false;
         runBtn.textContent = 'Simulera månadskörning';
@@ -476,9 +445,9 @@ async function runRecurringTransactions() {
 }
 
 
-// ----- SÖK & FILTER FUNKTIONER -----
+// ----- TABELLER, FORMULÄR, ETC. -----
 function getControlsHTML() {
-    return `<div class="controls-container"><div class="search-container"><input type="text" id="search-input" placeholder="Sök på beskrivning eller motpart..."></div><div class="filter-container"><button class="btn filter-btn active" data-period="all">Alla</button><button class="btn filter-btn" data-period="this-month">Denna månad</button><button class="btn filter-btn" data-period="last-month">Förra månaden</button></div></div>`;
+    return `<div class="controls-container"><div class="search-container"><input type="text" id="search-input" placeholder="Sök..."></div><div class="filter-container"><button class="btn filter-btn active" data-period="all">Alla</button><button class="btn filter-btn" data-period="this-month">Denna månad</button><button class="btn filter-btn" data-period="last-month">Förra månaden</button></div></div>`;
 }
 
 function applyFiltersAndRender(list, type) {
@@ -488,10 +457,7 @@ function applyFiltersAndRender(list, type) {
     const activeFilter = activeFilterEl ? activeFilterEl.dataset.period : 'all';
     let filteredList = list;
     if (searchTerm) {
-        filteredList = filteredList.filter(t => 
-            t.description.toLowerCase().includes(searchTerm) ||
-            (t.party && t.party.toLowerCase().includes(searchTerm))
-        );
+        filteredList = filteredList.filter(t => t.description.toLowerCase().includes(searchTerm) || (t.party && t.party.toLowerCase().includes(searchTerm)));
     }
     const now = new Date();
     const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -505,52 +471,23 @@ function applyFiltersAndRender(list, type) {
     renderTransactionTable(filteredList, type);
 }
 
-// ----- TABELL- & SID-RENDERINGSFUNKTIONER -----
-
 function renderTransactionTable(transactions, type) {
     const container = document.getElementById('table-container');
     if (!container) return;
-
     const getCategoryName = (categoryId) => {
         if (!categoryId) return '-';
         const category = categories.find(c => c.id === categoryId);
         return category ? category.name : 'Okänd';
     };
-
     let head, rows;
-
     if (type === 'summary') {
         head = `<th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>Motpart</th><th class="text-right">Summa</th><th>Åtgärd</th>`;
-        rows = transactions.map(t => {
-            const actionCell = t.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${t.id}" data-type="${t.type}">Korrigera</button></td>`;
-            return `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}">
-                        <td>${t.date}</td>
-                        <td>${t.description}</td>
-                        <td>${getCategoryName(t.categoryId)}</td>
-                        <td>${t.party || ''}</td>
-                        <td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>
-                        ${actionCell}
-                    </tr>`;
-        }).join('');
+        rows = transactions.map(t => `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}"><td>${t.date}</td><td>${t.description}</td><td>${getCategoryName(t.categoryId)}</td><td>${t.party || ''}</td><td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>${t.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${t.id}" data-type="${t.type}">Korrigera</button></td>`}</tr>`).join('');
     } else {
         head = `<th>Datum</th><th>Beskrivning</th><th>Kategori</th><th>Motpart</th><th class="text-right">Summa</th><th>Underlag</th><th>Åtgärd</th>`;
-        rows = transactions.map(data => {
-            const actionCell = data.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${data.id}" data-type="${type}">Korrigera</button></td>`;
-            const attachmentCell = data.attachmentUrl ? `<td><a href="${data.attachmentUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>';
-            return `<tr class="${data.isCorrection ? 'corrected' : ''}">
-                        <td>${data.date}</td>
-                        <td>${data.description}</td>
-                        <td>${getCategoryName(data.categoryId)}</td>
-                        <td>${data.party || ''}</td>
-                        <td class="text-right">${Number(data.amount).toFixed(2)} kr</td>
-                        ${attachmentCell}
-                        ${actionCell}
-                    </tr>`;
-        }).join('');
+        rows = transactions.map(data => `<tr class="${data.isCorrection ? 'corrected' : ''}"><td>${data.date}</td><td>${data.description}</td><td>${getCategoryName(data.categoryId)}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${data.attachmentUrl ? `<td><a href="${data.attachmentUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>'}${data.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${data.id}" data-type="${type}">Korrigera</button></td>`}</tr>`).join('');
     }
-
     container.innerHTML = `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${rows.length > 0 ? rows : `<tr><td colspan="${head.split('</th>').length - 1}" class="text-center">Inga transaktioner att visa.</td></tr>`}</tbody></table>`;
-
     container.querySelectorAll('.btn-correction').forEach(btn => {
         btn.addEventListener('click', (e) => renderCorrectionForm(e.target.dataset.type, e.target.dataset.id));
     });
@@ -601,53 +538,15 @@ function renderTransactionList(type) {
     }, 10);
 }
 
-
-// ----- FORMULÄR & SPARANDE -----
-
 function renderTransactionForm(type, originalData = {}, isCorrection = false, originalId = null) {
     const mainView = document.getElementById('main-view');
     const title = isCorrection ? 'Korrigera Transaktion' : `Registrera Ny ${type === 'income' ? 'Intäkt' : 'Utgift'}`;
     const today = new Date().toISOString().slice(0, 10);
-
-    const categoryOptions = categories.map(cat => 
-        `<option value="${cat.id}" ${originalData.categoryId === cat.id ? 'selected' : ''}>${cat.name}</option>`
-    ).join('');
-    
-    mainView.innerHTML = `
-        <div class="card" style="max-width: 600px; margin: auto;">
-            <h3 class="card-title">${title}</h3>
-            ${isCorrection ? `<p class="correction-notice">Du skapar nu en rättelsepost.</p>` : ''}
-            <div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${originalData.date || today}"></div>
-            <div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text" value="${originalData.description || ''}" placeholder="Vad köptes?"></div>
-            <div class="input-group">
-                <label>Kategori</label>
-                <select id="trans-category">
-                    <option value="">Välj kategori...</option>
-                    ${categoryOptions}
-                </select>
-            </div>
-            <div class="input-group"><label>Motpart (Kund/Leverantör)</label><input id="trans-party" type="text" value="${originalData.party || ''}" placeholder="Vem/vilket företag?"></div>
-            <div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00" value="${originalData.amount || ''}"></div>
-            <div class="input-group"><label>Underlag (valfritt)</label><input id="trans-attachment" type="file" accept="image/*,.pdf"></div>
-            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                <button id="cancel-btn" class="btn btn-secondary">Avbryt</button>
-                <button id="save-btn" class="btn btn-primary">${isCorrection ? 'Spara Rättelse' : 'Spara'}</button>
-            </div>
-        </div>`;
-
+    const categoryOptions = categories.map(cat => `<option value="${cat.id}" ${originalData.categoryId === cat.id ? 'selected' : ''}>${cat.name}</option>`).join('');
+    mainView.innerHTML = `<div class="card" style="max-width: 600px; margin: auto;"><h3>${title}</h3>${isCorrection ? `<p class="correction-notice">Du skapar en rättelsepost.</p>` : ''}<div class="input-group"><label>Datum</label><input id="trans-date" type="date" value="${originalData.date || today}"></div><div class="input-group"><label>Beskrivning</label><input id="trans-desc" type="text" value="${originalData.description || ''}"></div><div class="input-group"><label>Kategori</label><select id="trans-category"><option value="">Välj...</option>${categoryOptions}</select></div><div class="input-group"><label>Motpart</label><input id="trans-party" type="text" value="${originalData.party || ''}"></div><div class="input-group"><label>Summa (SEK)</label><input id="trans-amount" type="number" placeholder="0.00" value="${originalData.amount || ''}"></div><div class="input-group"><label>Underlag (valfritt)</label><input id="trans-attachment" type="file" accept="image/*,.pdf"></div><div style="display: flex; gap: 1rem; margin-top: 1rem;"><button id="cancel-btn" class="btn btn-secondary">Avbryt</button><button id="save-btn" class="btn btn-primary">${isCorrection ? 'Spara Rättelse' : 'Spara'}</button></div></div>`;
     document.getElementById('save-btn').addEventListener('click', () => {
-        const newData = { 
-            date: document.getElementById('trans-date').value, 
-            description: document.getElementById('trans-desc').value, 
-            party: document.getElementById('trans-party').value, 
-            amount: parseFloat(document.getElementById('trans-amount').value) || 0,
-            categoryId: document.getElementById('trans-category').value || null 
-        };
-        if (isCorrection) { 
-            handleCorrectionSave(type, originalId, originalData, newData); 
-        } else { 
-            handleSave(type, newData); 
-        }
+        const newData = { date: document.getElementById('trans-date').value, description: document.getElementById('trans-desc').value, party: document.getElementById('trans-party').value, amount: parseFloat(document.getElementById('trans-amount').value) || 0, categoryId: document.getElementById('trans-category').value || null };
+        if (isCorrection) { handleCorrectionSave(type, originalId, originalData, newData); } else { handleSave(type, newData); }
     });
     document.getElementById('cancel-btn').addEventListener('click', () => navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter'));
 }
@@ -655,17 +554,14 @@ function renderTransactionForm(type, originalData = {}, isCorrection = false, or
 async function handleSave(type, data) {
     const attachmentFile = document.getElementById('trans-attachment').files[0];
     const transactionData = { ...data, userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp(), isCorrection: false, attachmentUrl: null };
-    
     if (!transactionData.date || !transactionData.description || transactionData.amount <= 0) {
         showToast('Fyll i datum, beskrivning och en giltig summa.', 'warning');
         return;
     }
-    
     showConfirmationModal(async () => {
         const saveButton = document.querySelector('#modal-container .btn-primary');
         saveButton.disabled = true;
         saveButton.textContent = 'Sparar...';
-        
         if (attachmentFile) {
             const folder = type === 'income' ? 'income_attachments' : 'expense_attachments';
             const storageRef = ref(storage, `${folder}/${currentUser.uid}/${Date.now()}-${attachmentFile.name}`);
@@ -681,12 +577,12 @@ async function handleSave(type, data) {
             }
         }
         await saveTransaction(type, transactionData);
-    }, "Bekräfta Bokföring", "Var vänlig bekräfta denna bokföringspost. Enligt Bokföringslagen är detta en slutgiltig aktion.");
+    }, "Bekräfta Bokföring", "Bekräfta denna post. Enligt Bokföringslagen är detta en slutgiltig aktion.");
 }
 
 async function handleCorrectionSave(type, originalId, originalData, newData) {
     if (!newData.date || !newData.description || newData.amount <= 0) {
-        showToast('Fyll i alla fält korrekt för den nya posten.', 'warning');
+        showToast('Fyll i alla fält korrekt.', 'warning');
         return;
     }
     showConfirmationModal(async () => {
@@ -694,20 +590,17 @@ async function handleCorrectionSave(type, originalId, originalData, newData) {
         const collectionName = type === 'income' ? 'incomes' : 'expenses';
         const originalDocRef = doc(db, collectionName, originalId);
         batch.update(originalDocRef, { isCorrection: true });
-        
         const reversalPost = { ...originalData, amount: -originalData.amount, isCorrection: true, correctedPostId: originalId, description: `Rättelse av: ${originalData.description}`, createdAt: serverTimestamp() };
         const reversalDocRef = doc(collection(db, collectionName));
         batch.set(reversalDocRef, reversalPost);
-        
         const newPost = { ...newData, userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp(), isCorrection: false, correctsPostId: originalId };
         const newDocRef = doc(collection(db, collectionName));
         batch.set(newDocRef, newPost);
-        
         await batch.commit();
         await fetchAllCompanyData();
         navigateTo(type === 'income' ? 'Intäkter' : 'Utgifter');
         showToast("Rättelsen har sparats.", "success");
-    }, "Bekräfta Rättelse", "Du är på väg att skapa en rättelsepost. Detta kan inte ångras.");
+    }, "Bekräfta Rättelse", "Detta kan inte ångras.");
 }
 
 async function saveTransaction(type, data) {
@@ -719,7 +612,7 @@ async function saveTransaction(type, data) {
         showToast("Transaktionen har sparats!", "success");
     } catch (error) {
         console.error("Fel vid sparning:", error);
-        showToast("Kunde inte spara transaktionen.", "error");
+        showToast("Kunde inte spara.", "error");
     }
 }
 
@@ -730,14 +623,9 @@ function showConfirmationModal(onConfirm, title, message) {
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
 
-// ----- GOOGLE DRIVE & IMPORT -----
-
+// RESTEN AV FUNKTIONERNA (IMPORT, SETTINGS, ETC.)
 function initializeGisClient() {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: SCOPES,
-        callback: '',
-    });
+    tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '' });
 }
 
 function handleAuthClick() {
@@ -759,13 +647,7 @@ function handleAuthClick() {
 function createPicker() {
     const view = new google.picker.View(google.picker.ViewId.DOCS);
     view.setMimeTypes("text/csv,application/vnd.google-apps.spreadsheet");
-    const picker = new google.picker.PickerBuilder()
-        .setAppId(GOOGLE_APP_ID)
-        .setOAuthToken(gapi.client.getToken().access_token)
-        .addView(view)
-        .setDeveloperKey(GOOGLE_API_KEY)
-        .setCallback(pickerCallback)
-        .build();
+    const picker = new google.picker.PickerBuilder().setAppId(GOOGLE_APP_ID).setOAuthToken(gapi.client.getToken().access_token).addView(view).setDeveloperKey(GOOGLE_API_KEY).setCallback(pickerCallback).build();
     picker.setVisible(true);
 }
 
@@ -776,26 +658,23 @@ async function pickerCallback(data) {
         let fileContent;
         try {
             if (doc.mimeType === 'application/vnd.google-apps.spreadsheet') {
-                const response = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: fileId, range: 'A:E',
-                });
-                const rows = response.result.values || [];
-                fileContent = rows.map(row => row.join(',')).join('\n');
+                const response = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: fileId, range: 'A:E' });
+                fileContent = (response.result.values || []).map(row => row.join(',')).join('\n');
             } else {
                 const response = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
                 fileContent = response.body;
             }
             processFileContent(fileContent);
         } catch (error) {
-            console.error("Fel vid hämtning av fil från Google Drive:", error);
-            showToast("Kunde inte hämta filen från Google Drive.", "error");
+            console.error("Fel vid hämtning av fil:", error);
+            showToast("Kunde inte hämta filen.", "error");
         }
     }
 }
 
 function renderImportPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="card"><h3 class="card-title">Importera Transaktioner</h3><p>Ladda upp en CSV-fil. Den måste innehålla kolumnerna: <strong>Datum, Typ, Beskrivning, Motpart, Summa (SEK)</strong>.</p><hr style="margin: 1rem 0;"><h4>Alternativ 1: Ladda upp fil från din enhet</h4><input type="file" id="csv-file-input" accept=".csv" style="display: block; margin-top: 1rem;"><hr style="margin: 1.5rem 0;"><h4>Alternativ 2: Importera från Google Drive</h4><button id="google-drive-import-btn" class="btn btn-secondary">Välj fil från Google Drive</button></div>`;
+    mainView.innerHTML = `<div class="card"><h3>Importera Transaktioner</h3><p>Ladda upp en CSV-fil. Kolumner: <strong>Datum, Typ, Beskrivning, Motpart, Summa (SEK)</strong>.</p><hr style="margin: 1rem 0;"><h4>Alternativ 1: Ladda upp fil</h4><input type="file" id="csv-file-input" accept=".csv" style="display: block; margin-top: 1rem;"><hr style="margin: 1.5rem 0;"><h4>Alternativ 2: Importera från Google Drive</h4><button id="google-drive-import-btn" class="btn btn-secondary">Välj fil från Google Drive</button></div>`;
     document.getElementById('csv-file-input').addEventListener('change', handleFileSelect, false);
     document.getElementById('google-drive-import-btn').addEventListener('click', () => {
         gapi.load('client:picker', async () => {
@@ -821,11 +700,10 @@ function processFileContent(text) {
         if (transactions.length > 0) {
             showImportConfirmationModal(transactions);
         } else {
-            showToast("Inga giltiga transaktioner hittades i filen.", "warning");
+            showToast("Inga giltiga transaktioner hittades.", "warning");
         }
     } catch (error) {
-        showToast(`Fel vid läsning av fil: ${error.message}`, "error");
-        console.error("CSV Parse Error:", error);
+        showToast(`Fel vid läsning: ${error.message}`, "error");
     }
 }
 
@@ -834,15 +712,14 @@ function parseCSV(text) {
     const header = lines[0].split(',').map(h => h.trim());
     const requiredHeaders = ['Datum', 'Typ', 'Beskrivning', 'Motpart', 'Summa (SEK)'];
     const idx = { date: header.indexOf(requiredHeaders[0]), type: header.indexOf(requiredHeaders[1]), description: header.indexOf(requiredHeaders[2]), party: header.indexOf(requiredHeaders[3]), amount: header.indexOf(requiredHeaders[4]) };
-    if (Object.values(idx).some(i => i === -1)) { throw new Error(`Filen saknar obligatoriska kolumner: ${requiredHeaders.join(', ')}`); }
+    if (Object.values(idx).some(i => i === -1)) { throw new Error(`Filen saknar kolumner: ${requiredHeaders.join(', ')}`); }
     const transactions = [];
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i]) continue;
         const data = lines[i].split(',');
         const type = data[idx.type]?.trim();
         if (type !== 'Intäkt' && type !== 'Utgift') continue;
-        const amountStr = data[idx.amount]?.replace(/"/g, '').replace(/\s/g, '').replace(',', '.');
-        const amount = parseFloat(amountStr);
+        const amount = parseFloat(data[idx.amount]?.replace(/"/g, '').replace(/\s/g, '').replace(',', '.'));
         if (isNaN(amount)) continue;
         transactions.push({ date: data[idx.date]?.trim(), type: type, description: data[idx.description]?.trim(), party: data[idx.party]?.trim() || '', amount: Math.abs(amount), id: `import-${i}` });
     }
@@ -851,17 +728,8 @@ function parseCSV(text) {
 
 function showImportConfirmationModal(transactions) {
     const modalContainer = document.getElementById('modal-container');
-    const transactionRows = transactions.map(t => `
-        <tr class="import-row">
-            <td><input type="checkbox" class="import-checkbox" data-transaction-id="${t.id}" checked></td>
-            <td>${t.date}</td>
-            <td>${t.description}</td>
-            <td>${t.party}</td>
-            <td class="${t.type === 'Intäkt' ? 'green' : 'red'}">${t.type}</td>
-            <td class="text-right">${t.amount.toFixed(2)} kr</td>
-        </tr>
-    `).join('');
-    modalContainer.innerHTML = `<div class="modal-overlay"><div class="modal-content" style="max-width: 900px;"><h3>Granska och bekräfta import</h3><p>Verifiera transaktionerna nedan. Bocka ur de du inte vill importera.</p><div style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1rem;"><table class="data-table"><thead><tr><th><input type="checkbox" id="select-all-checkbox" checked></th><th>Datum</th><th>Beskrivning</th><th>Motpart</th><th>Typ</th><th class="text-right">Summa</th></tr></thead><tbody>${transactionRows}</tbody></table></div><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm-import" class="btn btn-primary">Importera valda</button></div></div></div>`;
+    const transactionRows = transactions.map(t => `<tr class="import-row"><td><input type="checkbox" class="import-checkbox" data-transaction-id="${t.id}" checked></td><td>${t.date}</td><td>${t.description}</td><td>${t.party}</td><td class="${t.type === 'Intäkt' ? 'green' : 'red'}">${t.type}</td><td class="text-right">${t.amount.toFixed(2)} kr</td></tr>`).join('');
+    modalContainer.innerHTML = `<div class="modal-overlay"><div class="modal-content" style="max-width: 900px;"><h3>Granska och bekräfta import</h3><p>Bocka ur de du inte vill importera.</p><div style="max-height: 400px; overflow-y: auto;"><table class="data-table"><thead><tr><th><input type="checkbox" id="select-all-checkbox" checked></th><th>Datum</th><th>Beskrivning</th><th>Motpart</th><th>Typ</th><th class="text-right">Summa</th></tr></thead><tbody>${transactionRows}</tbody></table></div><div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary">Avbryt</button><button id="modal-confirm-import" class="btn btn-primary">Importera valda</button></div></div></div>`;
     document.getElementById('modal-cancel').addEventListener('click', () => modalContainer.innerHTML = '');
     document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
         document.querySelectorAll('.import-checkbox').forEach(checkbox => checkbox.checked = e.target.checked);
@@ -888,14 +756,13 @@ function showImportConfirmationModal(transactions) {
             navigateTo('Sammanfattning');
         } catch (error) {
             console.error("Fel vid import:", error);
-            showToast("Ett fel uppstod vid import.", "error");
+            showToast("Ett fel uppstod.", "error");
             confirmBtn.disabled = false;
             confirmBtn.textContent = 'Importera valda';
         }
     });
 }
 
-// ----- INSTÄLLNINGAR & PROFIL -----
 function updateProfileIcon() {
     const profileIcon = document.getElementById('user-profile-icon');
     if (userData?.profileImageURL) {
@@ -910,7 +777,7 @@ function updateProfileIcon() {
 
 function renderSettingsPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div><div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div><div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent. Detta kan inte ångras.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div></div>`;
+    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div><div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div><div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div></div>`;
     document.getElementById('save-pic').addEventListener('click', saveProfileImage);
     document.getElementById('save-company').addEventListener('click', saveCompanyInfo);
     document.getElementById('delete-account').addEventListener('click', deleteAccount);
@@ -929,7 +796,7 @@ async function saveProfileImage() {
         updateProfileIcon();
         showToast('Profilbilden är uppdaterad!', 'success');
     } catch (error) {
-        console.error("Fel vid uppladdning av profilbild:", error);
+        console.error("Fel vid uppladdning:", error);
         showToast("Kunde inte spara profilbilden.", "error");
     }
 }
@@ -943,8 +810,8 @@ async function saveCompanyInfo() {
         updateProfileIcon();
         showToast('Företagsinformationen är sparad!', 'success');
     } catch (error) {
-        console.error("Fel vid sparning av företagsnamn:", error);
-        showToast("Kunde inte spara företagsnamnet.", "error");
+        console.error("Fel vid sparning:", error);
+        showToast("Kunde inte spara.", "error");
     }
 }
 
@@ -956,8 +823,8 @@ async function deleteAccount() {
             showToast("Ditt konto har tagits bort.", "info");
             window.location.href = 'login.html';
         } catch (error) {
-            console.error("Fel vid borttagning av konto:", error);
-            showToast("Kunde inte ta bort kontot. Logga ut och in igen och försök på nytt.", "error");
+            console.error("Fel vid borttagning:", error);
+            showToast("Kunde inte ta bort kontot. Logga ut och in igen.", "error");
         }
     }
 }
