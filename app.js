@@ -129,15 +129,29 @@ function renderPageContent(page) {
     const pageTitle = document.querySelector('.page-title');
     const newItemBtn = document.getElementById('new-item-btn');
     
+    // Uppdatera sidans titel och återställ knappen
     pageTitle.textContent = page;
-    mainView.innerHTML = `<div class="card">${renderSpinner()}</div>`;
     newItemBtn.style.display = 'none';
 
+    // Rensa tidigare innehåll
+    mainView.innerHTML = '';
+
+    // Anropa rätt funktion för att bygga upp den nya sidan
     switch (page) {
-        case 'Översikt': renderDashboard(); break;
-        case 'Sammanfattning': renderSummaryPage(); break;
-        case 'Rapporter': renderReportsPage(); break;
-        case 'Importera': renderImportPage(); break;
+        case 'Översikt':
+            renderDashboard();
+            break;
+        case 'Sammanfattning':
+            renderSummaryPage();
+            break;
+        case 'Rapporter':
+            // Denna funktion behöver skapas
+            // renderReportsPage(); 
+            mainView.innerHTML = `<div class="card"><h3 class="card-title">Rapporter</h3><p>Denna sektion är under utveckling.</p></div>`;
+            break;
+        case 'Importera':
+            renderImportPage();
+            break;
         case 'Intäkter':
             newItemBtn.textContent = 'Ny Intäkt';
             newItemBtn.style.display = 'block';
@@ -150,12 +164,15 @@ function renderPageContent(page) {
             newItemBtn.onclick = () => renderTransactionForm('expense');
             renderTransactionList('expense');
             break;
-        case 'Inställningar': renderSettingsPage(); break;
-        default: mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan hittades inte</h3></div>`;
+        case 'Inställningar':
+            renderSettingsPage();
+            break;
+        default:
+            mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan hittades inte</h3></div>`;
     }
 }
 
-// ----- NYTT: SÖK & FILTER FUNKTIONER -----
+// ----- SÖK & FILTER FUNKTIONER -----
 function getControlsHTML() {
     return `
         <div class="controls-container">
@@ -211,14 +228,14 @@ function renderTransactionTable(transactions, type) {
             const actionCell = t.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${t.id}" data-type="${t.type}">Korrigera</button></td>`;
             return `<tr class="transaction-row ${t.type} ${t.isCorrection ? 'corrected' : ''}"><td>${t.date}</td><td>${t.description}</td><td>${t.party || ''}</td><td class="text-right ${t.type === 'income' ? 'green' : 'red'}">${Number(t.amount).toFixed(2)} kr</td>${actionCell}</tr>`;
         }).join('');
-        container.innerHTML = `<table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Motpart</th><th class="text-right">Summa</th><th>Åtgärd</th></tr></thead><tbody>${rows || '<tr><td colspan="5">Inga transaktioner att visa.</td></tr>'}</tbody></table>`;
+        container.innerHTML = `<table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Motpart</th><th class="text-right">Summa</th><th>Åtgärd</th></tr></thead><tbody>${rows.length > 0 ? rows : '<tr><td colspan="5">Inga transaktioner att visa.</td></tr>'}</tbody></table>`;
     } else {
         const rows = transactions.map(data => {
             const actionCell = data.isCorrection ? '<td>Rättad</td>' : `<td><button class="btn-correction" data-id="${data.id}" data-type="${type}">Korrigera</button></td>`;
             const attachmentCell = data.attachmentUrl ? `<td><a href="${data.attachmentUrl}" target="_blank" class="receipt-link">Visa</a></td>` : '<td>-</td>';
             return `<tr class="${data.isCorrection ? 'corrected' : ''}"><td>${data.date}</td><td>${data.description}</td><td>${data.party || ''}</td><td class="text-right">${Number(data.amount).toFixed(2)} kr</td>${attachmentCell}<td>${actionCell}</td></tr>`;
         }).join('');
-        container.innerHTML = `<table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Motpart</th><th class="text-right">Summa</th><th>Underlag</th><th>Åtgärd</th></tr></thead><tbody>${rows || `<tr><td colspan="6">Inga transaktioner att visa.</td></tr>`}</tbody></table>`;
+        container.innerHTML = `<table class="data-table"><thead><tr><th>Datum</th><th>Beskrivning</th><th>Motpart</th><th class="text-right">Summa</th><th>Underlag</th><th>Åtgärd</th></tr></thead><tbody>${rows.length > 0 ? rows : `<tr><td colspan="6">Inga transaktioner att visa.</td></tr>`}</tbody></table>`;
     }
 
     container.querySelectorAll('.btn-correction').forEach(btn => {
@@ -239,43 +256,58 @@ function renderDashboard() {
 
 function renderSummaryPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3>${getControlsHTML()}<div id="table-container">${renderSpinner()}</div></div>`;
+    // Steg 1: Rita sidans skelett
+    mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3>${getControlsHTML()}<div id="table-container"></div></div>`;
     
-    // Initial rendering and setup of event listeners
-    applyFiltersAndRender(allTransactions, 'summary');
+    // Steg 2: Placera en spinner i containern som väntar på data
+    const tableContainer = document.getElementById('table-container');
+    tableContainer.innerHTML = renderSpinner();
+
+    // Steg 3: Kör den asynkrona logiken (i detta fall är den snabb, men mönstret är bra)
+    // En setTimeout simulerar en nätverksfördröjning för att göra spinnern synlig
+    setTimeout(() => {
+        applyFiltersAndRender(allTransactions, 'summary');
     
-    document.getElementById('search-input').addEventListener('input', () => applyFiltersAndRender(allTransactions, 'summary'));
-    
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelector('.filter-btn.active').classList.remove('active');
-            e.target.classList.add('active');
-            applyFiltersAndRender(allTransactions, 'summary');
+        document.getElementById('search-input').addEventListener('input', () => applyFiltersAndRender(allTransactions, 'summary'));
+        
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelector('.filter-btn.active').classList.remove('active');
+                e.target.classList.add('active');
+                applyFiltersAndRender(allTransactions, 'summary');
+            });
         });
-    });
+    }, 10); // Liten fördröjning för att UI ska hinna rita spinnern
 }
 
 function renderTransactionList(type) {
     const mainView = document.getElementById('main-view');
     const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
     const dataToList = type === 'income' ? allIncomes : allExpenses;
-    mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3>${getControlsHTML()}<div id="table-container">${renderSpinner()}</div></div>`;
+
+    // Steg 1: Rita sidans skelett
+    mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3>${getControlsHTML()}<div id="table-container"></div></div>`;
+
+    // Steg 2: Placera en spinner i containern
+    const tableContainer = document.getElementById('table-container');
+    tableContainer.innerHTML = renderSpinner();
     
-    // Initial rendering and setup of event listeners
-    applyFiltersAndRender(dataToList, type);
-    
-    document.getElementById('search-input').addEventListener('input', () => applyFiltersAndRender(dataToList, type));
-    
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelector('.filter-btn.active').classList.remove('active');
-            e.target.classList.add('active');
-            applyFiltersAndRender(dataToList, type);
+    // Steg 3: Kör logiken
+    setTimeout(() => {
+        applyFiltersAndRender(dataToList, type);
+        
+        document.getElementById('search-input').addEventListener('input', () => applyFiltersAndRender(dataToList, type));
+        
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelector('.filter-btn.active').classList.remove('active');
+                e.target.classList.add('active');
+                applyFiltersAndRender(dataToList, type);
+            });
         });
-    });
+    }, 10);
 }
-// ----- Resten av koden är oförändrad -----
-// ... (Google Drive, Import, Formulär, Inställningar etc.) ...
+
 // ----- GOOGLE DRIVE & IMPORT -----
 
 function initializeGisClient() {
