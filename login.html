@@ -28,7 +28,6 @@
             
             <div class="auth-links">
                  <a href="#" id="forgot-password-link">Glömt lösenord?</a>
-                 <!-- NY LÄNK: Dold som standard, visas vid behov -->
                  <a href="#" id="resend-verification-link" style="display: none; margin-left: 10px;">Skicka nytt bekräftelsemejl</a>
             </div>
             
@@ -37,7 +36,6 @@
     </div>
     
     <script type="module">
-        // Importera nödvändiga funktioner från Firebase SDK, inklusive sendEmailVerification
         import { signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
         import { auth } from './firebase-config.js';
 
@@ -48,6 +46,19 @@
         const messageEl = document.getElementById('auth-message');
         const forgotPasswordLink = document.getElementById('forgot-password-link');
         const resendVerificationLink = document.getElementById('resend-verification-link');
+
+        // NYTT: Kolla efter meddelanden i URL:en när sidan laddas
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const status = urlParams.get('status');
+            const email = urlParams.get('email');
+
+            if (status === 'registered' && email) {
+                messageEl.textContent = `Ett verifieringsmejl har skickats till ${decodeURIComponent(email)}. Klicka på länken i mejlet och logga sedan in.`;
+                messageEl.style.color = 'green'; // Grön färg för framgång
+            }
+        });
+
 
         // Om en verifierad användare redan är inloggad, skicka direkt till appen
         onAuthStateChanged(auth, user => {
