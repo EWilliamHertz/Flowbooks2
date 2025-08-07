@@ -23,7 +23,7 @@
 
     <script type="module">
         import { createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-        import { doc, setDoc, collection, query, where, getDocs, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+        import { doc, setDoc, collection, query, where, getDocs, writeBatch, runTransaction, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
         import { auth, db } from './firebase-config.js';
 
         const registerBtn = document.getElementById('register-btn');
@@ -99,8 +99,9 @@
 
                 // Steg 4: Skicka verifieringsmejl
                 await sendEmailVerification(user);
-                alert(`Ett verifieringsmejl har skickats till ${user.email}. Klicka på länken och logga sedan in.`);
-                window.location.href = 'login.html';
+                
+                // Steg 5: Omdirigera till login-sidan med ett success-meddelande
+                window.location.href = `login.html?status=registered&email=${encodeURIComponent(user.email)}`;
 
             } catch (error) {
                 console.error("Registreringsfel:", error);
@@ -109,4 +110,4 @@
         });
     </script>
 </body>
-</ht
+</html>
