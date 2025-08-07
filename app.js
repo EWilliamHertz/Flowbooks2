@@ -4,7 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/fireba
 import { auth, db, storage } from './firebase-config.js';
 
 // ----- Google API-konstanter -----
-const GOOGLE_API_KEY = "ERSTATT_MED_DIN_API_NYCKEL"; 
+const GOOGLE_API_KEY = "ERSTATT_MED_DIN_API_NYCKEL";
 const GOOGLE_CLIENT_ID = "ERSTATT_MED_DIN_OAUTH_CLIENT_ID.apps.googleusercontent.com";
 const GOOGLE_APP_ID = "ERSTATT_MED_DITT_APP_ID_FRAN_GOOGLE_PROJECT";
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
@@ -120,6 +120,7 @@ function navigateTo(page) {
     const link = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
     if (link) link.classList.add('active');
     renderPageContent(page);
+    document.querySelector('.sidebar').classList.remove('open'); // Stäng menyn vid navigering
 }
 
 // ----- SID-RENDERING -----
@@ -154,7 +155,7 @@ function renderPageContent(page) {
     }
 }
 
-// ----- SÖK & FILTER FUNKTIONER -----
+// ----- NYTT: SÖK & FILTER FUNKTIONER -----
 function getControlsHTML() {
     return `
         <div class="controls-container">
@@ -178,6 +179,7 @@ function applyFiltersAndRender(list, type) {
 
     let filteredList = list;
 
+    // Sökfilter
     if (searchTerm) {
         filteredList = filteredList.filter(t => 
             t.description.toLowerCase().includes(searchTerm) ||
@@ -185,6 +187,7 @@ function applyFiltersAndRender(list, type) {
         );
     }
 
+    // Datumfilter
     const now = new Date();
     const firstDayThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -223,6 +226,7 @@ function renderTransactionTable(transactions, type) {
     });
 }
 
+
 // ----- SID-RENDERINGSFUNKTIONER -----
 
 function renderDashboard() {
@@ -236,8 +240,12 @@ function renderDashboard() {
 function renderSummaryPage() {
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = `<div class="card"><h3 class="card-title">Transaktionshistorik</h3>${getControlsHTML()}<div id="table-container">${renderSpinner()}</div></div>`;
+    
+    // Initial rendering and setup of event listeners
     applyFiltersAndRender(allTransactions, 'summary');
+    
     document.getElementById('search-input').addEventListener('input', () => applyFiltersAndRender(allTransactions, 'summary'));
+    
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             document.querySelector('.filter-btn.active').classList.remove('active');
@@ -252,8 +260,12 @@ function renderTransactionList(type) {
     const title = type === 'income' ? 'Registrerade Intäkter' : 'Registrerade Utgifter';
     const dataToList = type === 'income' ? allIncomes : allExpenses;
     mainView.innerHTML = `<div class="card"><h3 class="card-title">${title}</h3>${getControlsHTML()}<div id="table-container">${renderSpinner()}</div></div>`;
+    
+    // Initial rendering and setup of event listeners
     applyFiltersAndRender(dataToList, type);
+    
     document.getElementById('search-input').addEventListener('input', () => applyFiltersAndRender(dataToList, type));
+    
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             document.querySelector('.filter-btn.active').classList.remove('active');
@@ -262,7 +274,8 @@ function renderTransactionList(type) {
         });
     });
 }
-
+// ----- Resten av koden är oförändrad -----
+// ... (Google Drive, Import, Formulär, Inställningar etc.) ...
 // ----- GOOGLE DRIVE & IMPORT -----
 
 function initializeGisClient() {
