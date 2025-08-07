@@ -62,14 +62,14 @@ function main() {
             const userDocSnap = await getDoc(userDocRef);
             if (userDocSnap.exists()) {
                 userData = { id: userDocSnap.id, ...userDocSnap.data() };
-                await fetchUserCompanies();
+                await fetchUserCompanies(); // Anropar den nya, korrigerade funktionen
                 if (userCompanies.length > 0) {
                     // Sätt första företaget som aktivt om inget är valt
                     currentCompany = userCompanies[0];
                     await fetchAllCompanyData();
                     initializeAppUI();
                 } else {
-                    showFatalError("Ditt konto är inte kopplat till något företag.");
+                    showFatalError("Ditt konto är inte kopplat till något företag, eller så kunde företaget inte hittas.");
                 }
             } else {
                 showFatalError("Ditt konto saknas i databasen.");
@@ -80,47 +80,51 @@ function main() {
     });
 }
 
-// HÄMTA ANVÄNDARENS FÖRETAG
+// ==================================================================
+// NY, KORRIGERAD FUNKTION FÖR ATT HÄMTA FÖRETAG
+// Denna funktion ersätter den gamla, ineffektiva och osäkra versionen.
+// ==================================================================
 async function fetchUserCompanies() {
+    userCompanies = []; // Rensa listan för säkerhets skull
     try {
-        // Hämta företag där användaren är ägare
-        const ownedCompaniesQuery = query(collection(db, 'companies'), where('ownerId', '==', currentUser.uid));
-        const ownedCompaniesSnap = await getDocs(ownedCompaniesQuery);
-        
-        // Hämta företag där användaren är medlem
-        const memberCompaniesQuery = query(collection(db, 'companies'), where('members', 'array-contains', currentUser.uid));
-        const memberCompaniesSnap = await getDocs(memberCompaniesQuery);
-        
-        const companies = new Map();
-        
-        // Lägg till ägda företag
-        ownedCompaniesSnap.docs.forEach(doc => {
-            companies.set(doc.id, { id: doc.id, ...doc.data(), role: 'owner' });
-        });
-        
-        // Lägg till företag där användaren är medlem
-        memberCompaniesSnap.docs.forEach(doc => {
-            if (!companies.has(doc.id)) {
-                companies.set(doc.id, { id: doc.id, ...doc.data(), role: 'member' });
-            }
-        });
-        
-        userCompanies = Array.from(companies.values());
-        
-        // Fallback: om inga företag hittades men userData har companyId, skapa företagsobjekt
-        if (userCompanies.length === 0 && userData.companyId) {
-            const companyRef = doc(db, 'companies', userData.companyId);
-            const companySnap = await getDoc(companyRef);
-            if (companySnap.exists()) {
-                userCompanies = [{ id: companySnap.id, ...companySnap.data(), role: 'member' }];
-            }
+        // Steg 1: Kontrollera att vi har användardata med ett companyId.
+        if (!userData || !userData.companyId) {
+            console.error("Användardata saknar companyId. Kan inte hämta företag.");
+            return; // Lämnar userCompanies tom, vilket leder till felmeddelande.
         }
-        
+
+        // Steg 2: Hämta företagsdokumentet direkt med det ID vi har från användaren.
+        // Detta är mycket effektivare och fungerar med säkerhetsreglerna.
+        const companyRef = doc(db, 'companies', userData.companyId);
+        const companySnap = await getDoc(companyRef);
+
+        // Steg 3: Kontrollera om företaget faktiskt existerar.
+        if (companySnap.exists()) {
+            // Företaget hittades. Skapa ett objekt med all data.
+            const companyData = { id: companySnap.id, ...companySnap.data() };
+            
+            // Bestäm användarens roll (ägare eller medlem)
+            if (companyData.ownerId === currentUser.uid) {
+                companyData.role = 'owner';
+            } else {
+                companyData.role = 'member';
+            }
+            
+            // Lägg till det hittade företaget i listan.
+            userCompanies.push(companyData);
+        } else {
+            // Detta är ett allvarligt dataintegritetsfel: användaren har ett companyId
+            // som pekar på ett dokument som inte finns.
+            console.error(`Fel: Företagsdokument med ID ${userData.companyId} existerar inte.`);
+        }
+
     } catch (error) {
-        console.error("Kunde inte hämta användarens företag:", error);
+        // Fånga eventuella fel under hämtningen (t.ex. nätverksproblem, behörighetsfel)
+        console.error("Ett fel uppstod vid hämtning av företag:", error);
         showToast("Kunde inte hämta företagsinformation.", "error");
     }
 }
+
 
 // KORRIGERAD FUNKTION FÖR DATAFRÅGOR
 async function fetchAllCompanyData() {
@@ -130,7 +134,17 @@ async function fetchAllCompanyData() {
         // Steg 1: Hämta företagsdokumentet för att få listan över medlems-UIDs
         const companyRef = doc(db, 'companies', companyId);
         const companySnap = await getDoc(companyRef);
-        const memberUIDs = companySnap.exists() && companySnap.data().members ? companySnap.data().members : [currentUser.uid];
+        
+        // Skapa en lista över medlemmar. Om 'members' fältet inte finns, använd bara ägaren.
+        let memberUIDs = [];
+        if (companySnap.exists() && companySnap.data().members) {
+            memberUIDs = companySnap.data().members;
+        }
+        // Säkerställ att ägaren alltid är med i listan
+        if (currentCompany.ownerId && !memberUIDs.includes(currentCompany.ownerId)) {
+            memberUIDs.push(currentCompany.ownerId);
+        }
+
 
         // Steg 2: Förbered alla databasfrågor
         const queries = [
@@ -300,7 +314,7 @@ function renderTeamPage() {
         <div class="settings-grid">
             <div class="card">
                 <h3 class="card-title">Teammedlemmar</h3>
-                <p>Personer med tillgång till företaget <strong>${userData.companyName}</strong>.</p>
+                <p>Personer med tillgång till företaget <strong>${currentCompany.name}</strong>.</p>
                 <div id="team-list-container" style="margin-top: 1.5rem;">${renderSpinner()}</div>
             </div>
             <div class="card">
@@ -330,7 +344,7 @@ function renderTeamPage() {
             }
 
             const invitationsRef = collection(db, 'invitations');
-            const q = query(invitationsRef, where("email", "==", email), where("companyId", "==", userData.companyId));
+            const q = query(invitationsRef, where("email", "==", email), where("companyId", "==", currentCompany.id));
             const existingInvite = await getDocs(q);
 
             if (!existingInvite.empty) {
@@ -340,8 +354,8 @@ function renderTeamPage() {
 
             await addDoc(invitationsRef, {
                 email: email,
-                companyId: userData.companyId,
-                companyName: userData.companyName,
+                companyId: currentCompany.id,
+                companyName: currentCompany.name,
                 invitedBy: currentUser.uid,
                 createdAt: serverTimestamp()
             });
@@ -381,7 +395,7 @@ function renderCategoriesPage() {
         const name = nameInput.value.trim();
         if (!name) { showToast('Ange ett namn för kategorin.', 'warning'); return; }
         try {
-            await addDoc(collection(db, 'categories'), { name, companyId: userData.companyId, createdAt: serverTimestamp() });
+            await addDoc(collection(db, 'categories'), { name, companyId: currentCompany.id, createdAt: serverTimestamp() });
             showToast('Kategori sparad!', 'success');
             nameInput.value = '';
             await fetchAllCompanyData();
@@ -460,7 +474,7 @@ function renderRecurringTransactionForm() {
         const saveBtn = document.getElementById('save-btn');
         saveBtn.disabled = true;
         saveBtn.textContent = 'Sparar...';
-        const data = { type: document.getElementById('rec-type').value, nextDueDate: document.getElementById('rec-date').value, description: document.getElementById('rec-desc').value, party: document.getElementById('rec-party').value, amount: parseFloat(document.getElementById('rec-amount').value) || 0, frequency: 'monthly', userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp() };
+        const data = { type: document.getElementById('rec-type').value, nextDueDate: document.getElementById('rec-date').value, description: document.getElementById('rec-desc').value, party: document.getElementById('rec-party').value, amount: parseFloat(document.getElementById('rec-amount').value) || 0, frequency: 'monthly', userId: currentUser.uid, companyId: currentCompany.id, createdAt: serverTimestamp() };
         if (!data.nextDueDate || !data.description || data.amount <= 0) {
             showToast('Fyll i alla fält korrekt.', 'warning');
             saveBtn.disabled = false;
@@ -626,7 +640,7 @@ function renderTransactionForm(type, originalData = {}, isCorrection = false, or
 
 async function handleSave(type, data) {
     const attachmentFile = document.getElementById('trans-attachment').files[0];
-    const transactionData = { ...data, userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp(), isCorrection: false, attachmentUrl: null };
+    const transactionData = { ...data, userId: currentUser.uid, companyId: currentCompany.id, createdAt: serverTimestamp(), isCorrection: false, attachmentUrl: null };
     if (!transactionData.date || !transactionData.description || transactionData.amount <= 0) {
         showToast('Fyll i datum, beskrivning och en giltig summa.', 'warning');
         return;
@@ -666,7 +680,7 @@ async function handleCorrectionSave(type, originalId, originalData, newData) {
         const reversalPost = { ...originalData, amount: -originalData.amount, isCorrection: true, correctedPostId: originalId, description: `Rättelse av: ${originalData.description}`, createdAt: serverTimestamp() };
         const reversalDocRef = doc(collection(db, collectionName));
         batch.set(reversalDocRef, reversalPost);
-        const newPost = { ...newData, userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp(), isCorrection: false, correctsPostId: originalId };
+        const newPost = { ...newData, userId: currentUser.uid, companyId: currentCompany.id, createdAt: serverTimestamp(), isCorrection: false, correctsPostId: originalId };
         const newDocRef = doc(collection(db, collectionName));
         batch.set(newDocRef, newPost);
         await batch.commit();
@@ -818,7 +832,7 @@ function showImportConfirmationModal(transactions) {
             transactionsToSave.forEach(t => {
                 const collectionName = t.type === 'Intäkt' ? 'incomes' : 'expenses';
                 const docRef = doc(collection(db, collectionName));
-                const dataToSave = { date: t.date, description: t.description, party: t.party, amount: t.amount, userId: currentUser.uid, companyId: userData.companyId, createdAt: serverTimestamp(), isCorrection: false, attachmentUrl: null };
+                const dataToSave = { date: t.date, description: t.description, party: t.party, amount: t.amount, userId: currentUser.uid, companyId: currentCompany.id, createdAt: serverTimestamp(), isCorrection: false, attachmentUrl: null };
                 batch.set(docRef, dataToSave);
             });
             await batch.commit();
@@ -849,7 +863,7 @@ function updateProfileIcon() {
 
 function renderSettingsPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div><div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${userData.companyName || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div><div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div></div>`;
+    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3>Profilbild</h3><p>Ladda upp en profilbild eller logotyp.</p><input type="file" id="profile-pic-upload" accept="image/*" style="margin-top: 1rem; margin-bottom: 1rem;"><button id="save-pic" class="btn btn-primary">Spara Bild</button></div><div class="card"><h3>Företagsinformation</h3><div class="input-group"><label>Företagsnamn</label><input id="setting-company" value="${currentCompany.name || ''}"></div><button id="save-company" class="btn btn-primary">Spara</button></div><div class="card card-danger"><h3>Ta bort konto</h3><p>All din data raderas permanent.</p><button id="delete-account" class="btn btn-danger">Ta bort kontot permanent</button></div></div>`;
     document.getElementById('save-pic').addEventListener('click', saveProfileImage);
     document.getElementById('save-company').addEventListener('click', saveCompanyInfo);
     document.getElementById('delete-account').addEventListener('click', deleteAccount);
@@ -877,9 +891,16 @@ async function saveCompanyInfo() {
     const newName = document.getElementById('setting-company').value;
     if (!newName) return;
     try {
+        // Uppdatera både företagsdokumentet och användarens companyName
+        await updateDoc(doc(db, 'companies', currentCompany.id), { name: newName });
         await updateDoc(doc(db, 'users', currentUser.uid), { companyName: newName });
+        
+        // Uppdatera lokala data
+        currentCompany.name = newName;
         userData.companyName = newName;
+        
         updateProfileIcon();
+        setupCompanySelector(); // Uppdatera namnet i dropdown
         showToast('Företagsinformationen är sparad!', 'success');
     } catch (error) {
         console.error("Fel vid sparning:", error);
@@ -888,8 +909,10 @@ async function saveCompanyInfo() {
 }
 
 async function deleteAccount() {
-    if (prompt("Är du helt säker? Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
+    if (prompt("Är du helt säker? Detta raderar ditt användarkonto men inte företagsdatan om andra medlemmar finns. Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
         try {
+            // Här bör man lägga till logik för att hantera borttagning av företag om man är sista medlemmen etc.
+            // För nuvarande, raderar vi bara användarkontot.
             await deleteDoc(doc(db, 'users', currentUser.uid));
             await auth.currentUser.delete();
             showToast("Ditt konto har tagits bort.", "info");
@@ -1041,14 +1064,16 @@ async function renderAllCompaniesDashboard() {
     }
 }
 
-function switchToCompany(companyId) {
-    currentCompany = userCompanies.find(c => c.id === companyId);
-    document.getElementById('company-selector').value = companyId;
-    document.getElementById('company-selector').style.display = 'block';
+window.switchToCompany = (companyId) => {
+    const companySelector = document.getElementById('company-selector');
+    companySelector.value = companyId;
+    // Skapa och avfyra ett 'change' event för att trigga logiken för företagsbyte
+    companySelector.dispatchEvent(new Event('change'));
+    // Navigera till översikten för det valda företaget
     navigateTo('Översikt');
 }
 
-function manageCompany(companyId) {
+window.manageCompany = (companyId) => {
     // Implementera företagshantering (bjuda in användare, etc.)
     showToast('Företagshantering kommer snart!', 'info');
 }
@@ -1266,9 +1291,9 @@ async function deleteProduct(productId) {
     }
 }
 
-function editProduct(productId) {
-    renderProductForm(productId);
-}
+window.editProduct = (productId) => renderProductForm(productId);
+window.deleteProduct = (productId) => deleteProduct(productId);
+
 
 function showMTGImportModal() {
     const modalHtml = `
@@ -1351,7 +1376,7 @@ async function searchMTGCards() {
     }
 }
 
-async function importMTGCard(cardId) {
+window.importMTGCard = async (cardId) => {
     try {
         const response = await fetch(`https://api.scryfall.com/cards/${cardId}`, {
             headers: {
@@ -1501,7 +1526,7 @@ async function importFromGoogleSheets() {
     }
 }
 
-function closeModal() {
+window.closeModal = () => {
     document.getElementById('modal-container').innerHTML = '';
 }
 
