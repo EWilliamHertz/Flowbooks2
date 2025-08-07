@@ -4,7 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/fireba
 import { auth, db, storage } from './firebase-config.js';
 
 // ----- Google API-konstanter -----
-const GOOGLE_API_KEY = "ERSTATT_MED_DIN_API_NYCKEL";
+const GOOGLE_API_KEY = "AIzaSyDGamRgGYt-Bl2Mj0znqAG7uFWM9TC0VgU";
 const GOOGLE_CLIENT_ID = "ERSTATT_MED_DIN_OAUTH_CLIENT_ID.apps.googleusercontent.com";
 const GOOGLE_APP_ID = "ERSTATT_MED_DITT_APP_ID_FRAN_GOOGLE_PROJECT";
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
