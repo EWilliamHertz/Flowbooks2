@@ -62,9 +62,8 @@ function main() {
             const userDocSnap = await getDoc(userDocRef);
             if (userDocSnap.exists()) {
                 userData = { id: userDocSnap.id, ...userDocSnap.data() };
-                await fetchUserCompanies(); // Anropar den nya, korrigerade funktionen
+                await fetchUserCompanies();
                 if (userCompanies.length > 0) {
-                    // Sätt första företaget som aktivt om inget är valt
                     currentCompany = userCompanies[0];
                     await fetchAllCompanyData();
                     initializeAppUI();
@@ -80,73 +79,47 @@ function main() {
     });
 }
 
-// ==================================================================
-// NY, KORRIGERAD FUNKTION FÖR ATT HÄMTA FÖRETAG
-// Denna funktion ersätter den gamla, ineffektiva och osäkra versionen.
-// ==================================================================
 async function fetchUserCompanies() {
-    userCompanies = []; // Rensa listan för säkerhets skull
+    userCompanies = [];
     try {
-        // Steg 1: Kontrollera att vi har användardata med ett companyId.
         if (!userData || !userData.companyId) {
             console.error("Användardata saknar companyId. Kan inte hämta företag.");
-            return; // Lämnar userCompanies tom, vilket leder till felmeddelande.
+            return;
         }
 
-        // Steg 2: Hämta företagsdokumentet direkt med det ID vi har från användaren.
-        // Detta är mycket effektivare och fungerar med säkerhetsreglerna.
         const companyRef = doc(db, 'companies', userData.companyId);
         const companySnap = await getDoc(companyRef);
 
-        // Steg 3: Kontrollera om företaget faktiskt existerar.
         if (companySnap.exists()) {
-            // Företaget hittades. Skapa ett objekt med all data.
             const companyData = { id: companySnap.id, ...companySnap.data() };
-            
-            // Bestäm användarens roll (ägare eller medlem)
-            if (companyData.ownerId === currentUser.uid) {
-                companyData.role = 'owner';
-            } else {
-                companyData.role = 'member';
-            }
-            
-            // Lägg till det hittade företaget i listan.
+            companyData.role = (companyData.ownerId === currentUser.uid) ? 'owner' : 'member';
             userCompanies.push(companyData);
         } else {
-            // Detta är ett allvarligt dataintegritetsfel: användaren har ett companyId
-            // som pekar på ett dokument som inte finns.
             console.error(`Fel: Företagsdokument med ID ${userData.companyId} existerar inte.`);
         }
 
     } catch (error) {
-        // Fånga eventuella fel under hämtningen (t.ex. nätverksproblem, behörighetsfel)
         console.error("Ett fel uppstod vid hämtning av företag:", error);
         showToast("Kunde inte hämta företagsinformation.", "error");
     }
 }
 
-
-// KORRIGERAD FUNKTION FÖR DATAFRÅGOR
 async function fetchAllCompanyData() {
+    if (!currentCompany) return;
     try {
         const companyId = currentCompany.id;
 
-        // Steg 1: Hämta företagsdokumentet för att få listan över medlems-UIDs
         const companyRef = doc(db, 'companies', companyId);
         const companySnap = await getDoc(companyRef);
         
-        // Skapa en lista över medlemmar. Om 'members' fältet inte finns, använd bara ägaren.
         let memberUIDs = [];
-        if (companySnap.exists() && companySnap.data().members) {
+        if (companySnap.exists() && Array.isArray(companySnap.data().members)) {
             memberUIDs = companySnap.data().members;
         }
-        // Säkerställ att ägaren alltid är med i listan
         if (currentCompany.ownerId && !memberUIDs.includes(currentCompany.ownerId)) {
             memberUIDs.push(currentCompany.ownerId);
         }
 
-
-        // Steg 2: Förbered alla databasfrågor
         const queries = [
             getDocs(query(collection(db, 'incomes'), where('companyId', '==', companyId))),
             getDocs(query(collection(db, 'expenses'), where('companyId', '==', companyId))),
@@ -155,21 +128,17 @@ async function fetchAllCompanyData() {
             getDocs(query(collection(db, 'products'), where('companyId', '==', companyId), orderBy('name')))
         ];
 
-        // Lägg bara till team-frågan om det finns medlemmar att hämta
         if (memberUIDs.length > 0) {
             queries.push(getDocs(query(collection(db, 'users'), where(documentId(), 'in', memberUIDs))));
         }
 
-        // Steg 3: Kör alla frågor parallellt
         const results = await Promise.all(queries);
         
-        // Steg 4: Mappa alla resultat till globala variabler
         allIncomes = results[0].docs.map(d => ({ id: d.id, ...d.data() }));
         allExpenses = results[1].docs.map(d => ({ id: d.id, ...d.data() }));
         recurringTransactions = results[2].docs.map(d => ({ id: d.id, ...d.data() }));
         categories = results[3].docs.map(d => ({ id: d.id, ...d.data() }));
         allProducts = results[4].docs.map(d => ({ id: d.id, ...d.data() }));
-        // Kontrollera om team-frågan kördes
         teamMembers = results.length > 5 ? results[5].docs.map(d => ({ id: d.id, ...d.data() })) : [];
         
         allTransactions = [
@@ -183,7 +152,6 @@ async function fetchAllCompanyData() {
     }
 }
 
-
 function initializeAppUI() {
     updateProfileIcon();
     setupCompanySelector();
@@ -194,21 +162,17 @@ function initializeAppUI() {
 
 function setupCompanySelector() {
     const selector = document.getElementById('company-selector');
-    
-    // Fyll företagsväljaren
     selector.innerHTML = userCompanies.map(company => 
         `<option value="${company.id}" ${company.id === currentCompany.id ? 'selected' : ''}>
-            ${company.name} ${company.role === 'owner' ? '(Ägare)' : '(Medlem)'}
+            ${company.name} ${company.role === 'owner' ? '(Ägare)' : ''}
         </option>`
     ).join('');
     
-    // Lägg till event listener för företagsbyte
     selector.addEventListener('change', async (e) => {
         const selectedCompanyId = e.target.value;
         currentCompany = userCompanies.find(c => c.id === selectedCompanyId);
         await fetchAllCompanyData();
         
-        // Uppdatera sidan om vi inte är på översiktssidan för alla företag
         const currentPage = document.querySelector('.page-title').textContent;
         if (currentPage !== 'Översikt Alla Företag') {
             renderPageContent(currentPage);
@@ -240,17 +204,21 @@ function setupEventListeners() {
 }
 
 function navigateTo(page) {
+    const appContainer = document.getElementById('app-container');
+    const header = document.querySelector('.main-header');
+    
+    // Hantera portal-vyn
+    if (page === 'Översikt Alla Företag') {
+        appContainer.classList.add('portal-view');
+        header.style.display = 'none'; // Göm hela headern i portalvyn
+    } else {
+        appContainer.classList.remove('portal-view');
+        header.style.display = 'flex'; // Visa headern igen
+    }
+
     document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
     const link = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
     if (link) link.classList.add('active');
-    
-    // Visa företagsväljaren på alla sidor utom "Översikt Alla Företag"
-    const companySelector = document.getElementById('company-selector');
-    if (page === 'Översikt Alla Företag') {
-        companySelector.style.display = 'none';
-    } else {
-        companySelector.style.display = 'block';
-    }
     
     renderPageContent(page);
     document.querySelector('.sidebar').classList.remove('open');
@@ -269,6 +237,7 @@ function renderPageContent(page) {
     switch (page) {
         case 'Översikt': renderDashboard(); break;
         case 'Översikt Alla Företag': renderAllCompaniesDashboard(); break;
+        // ... resten av case-satserna är oförändrade ...
         case 'Sammanfattning': renderSummaryPage(); break;
         case 'Fakturor': mainView.innerHTML = `<div class="card"><h3 class="card-title">Fakturor</h3><p>Denna sektion är under utveckling.</p></div>`; break;
         case 'Rapporter': mainView.innerHTML = `<div class="card"><h3 class="card-title">Rapporter</h3><p>Denna sektion är under utveckling.</p></div>`; break;
@@ -304,6 +273,111 @@ function renderPageContent(page) {
     }
 }
 
+// ----- ÖVERSIKT ALLA FÖRETAG (NY DESIGN) -----
+async function renderAllCompaniesDashboard() {
+    const mainView = document.getElementById('main-view');
+    mainView.innerHTML = renderSpinner();
+    
+    try {
+        // Vi antar att userCompanies redan är hämtad.
+        // För varje företag, hämta dess detaljerade data.
+        const companiesDataPromises = userCompanies.map(async (company) => {
+            const companyId = company.id;
+            const [incomesSnap, expensesSnap, productsSnap] = await Promise.all([
+                getDocs(query(collection(db, 'incomes'), where('companyId', '==', companyId))),
+                getDocs(query(collection(db, 'expenses'), where('companyId', '==', companyId))),
+                getDocs(query(collection(db, 'products'), where('companyId', '==', companyId)))
+            ]);
+            
+            const totalIncome = incomesSnap.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+            const totalExpenses = expensesSnap.docs.reduce((sum, doc) => sum + doc.data().amount, 0);
+            
+            return {
+                ...company,
+                totalIncome,
+                totalExpenses,
+                netProfit: totalIncome - totalExpenses,
+                productCount: productsSnap.size,
+                transactionCount: incomesSnap.size + expensesSnap.size
+            };
+        });
+
+        const companiesData = await Promise.all(companiesDataPromises);
+
+        const grandTotalProfit = companiesData.reduce((sum, company) => sum + company.netProfit, 0);
+
+        const dashboardHtml = `
+            <div class="portal-header">
+                <h1 class="logo">FlowBooks</h1>
+                <p>Välkommen, ${userData.firstName}. Du har tillgång till ${companiesData.length} företag.</p>
+                <div class="portal-total-profit">
+                    <span>Totalt Nettoresultat:</span>
+                    <strong class="${grandTotalProfit >= 0 ? 'green' : 'red'}">${grandTotalProfit.toLocaleString('sv-SE', { style: 'currency', currency: 'SEK' })}</strong>
+                </div>
+            </div>
+            <div class="company-cards-container">
+                ${companiesData.map(company => `
+                    <div class="company-card" onclick="window.switchToCompany('${company.id}')">
+                        <div class="company-card-header">
+                            <h3>${company.name}</h3>
+                            <span class="badge ${company.role === 'owner' ? 'badge-owner' : 'badge-member'}">${company.role}</span>
+                        </div>
+                        <div class="company-card-body">
+                            <div class="stat">
+                                <span class="label">Nettoresultat</span>
+                                <span class="value ${company.netProfit >= 0 ? 'green' : 'red'}">
+                                    ${company.netProfit.toLocaleString('sv-SE', { style: 'currency', currency: 'SEK' })}
+                                </span>
+                            </div>
+                            <div class="stat">
+                                <span class="label">Intäkter</span>
+                                <span class="value green">
+                                    ${company.totalIncome.toLocaleString('sv-SE', { style: 'currency', currency: 'SEK' })}
+                                </span>
+                            </div>
+                            <div class="stat">
+                                <span class="label">Utgifter</span>
+                                <span class="value red">
+                                    ${company.totalExpenses.toLocaleString('sv-SE', { style: 'currency', currency: 'SEK' })}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="company-card-footer">
+                            <span>${company.transactionCount} transaktioner</span>
+                            <span>${company.productCount} produkter</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        mainView.innerHTML = dashboardHtml;
+        
+    } catch (error) {
+        console.error('Fel vid hämtning av företagsdata för portalen:', error);
+        mainView.innerHTML = '<div class="card card-danger"><h3>Kunde inte ladda företagsöversikten</h3><p>Kontrollera dina säkerhetsregler och försök igen.</p></div>';
+    }
+}
+
+// Gör funktionen globalt tillgänglig så den kan anropas från HTML-onclick
+window.switchToCompany = (companyId) => {
+    currentCompany = userCompanies.find(c => c.id === companyId);
+    if (currentCompany) {
+        // Sätt värdet i dropdownen (även om den är dold) för konsekvens
+        document.getElementById('company-selector').value = companyId;
+        navigateTo('Översikt'); // Navigera till det valda företagets dashboard
+    }
+};
+
+
+// ----- RESTEN AV app.js -----
+// Alla andra funktioner (renderDashboard, renderTransactionList, etc.)
+// förblir oförändrade från din originalfil. Jag har utelämnat dem här
+// för att hålla koden kortfattad, men de ska finnas kvar i din fil.
+// Se till att all kod från raden "function renderDashboard() {...}" och framåt
+// finns kvar i din slutgiltiga app.js-fil.
+
+// ... (se till att all din övriga kod från den tidigare versionen finns här) ...
 // Inkluderar resten av funktionerna... (Team, Kategorier, Återkommande, Transaktioner, etc.)
 // ... (Hela resten av filen är här, korrekt sammanfogad)
 
@@ -795,19 +869,42 @@ function processFileContent(text) {
 
 function parseCSV(text) {
     const lines = text.split(/\r\n|\n/);
-    const header = lines[0].split(',').map(h => h.trim());
-    const requiredHeaders = ['Datum', 'Typ', 'Beskrivning', 'Motpart', 'Summa (SEK)'];
-    const idx = { date: header.indexOf(requiredHeaders[0]), type: header.indexOf(requiredHeaders[1]), description: header.indexOf(requiredHeaders[2]), party: header.indexOf(requiredHeaders[3]), amount: header.indexOf(requiredHeaders[4]) };
-    if (Object.values(idx).some(i => i === -1)) { throw new Error(`Filen saknar kolumner: ${requiredHeaders.join(', ')}`); }
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const requiredHeaders = ['datum', 'typ', 'beskrivning', 'motpart', 'summa (sek)'];
+    
+    const idx = {
+        date: header.indexOf(requiredHeaders[0]),
+        type: header.indexOf(requiredHeaders[1]),
+        description: header.indexOf(requiredHeaders[2]),
+        party: header.indexOf(requiredHeaders[3]),
+        amount: header.indexOf(requiredHeaders[4])
+    };
+
+    if (Object.values(idx).some(i => i === -1)) {
+        throw new Error(`Filen saknar en eller flera av de obligatoriska kolumnerna: ${requiredHeaders.join(', ')}`);
+    }
+    
     const transactions = [];
     for (let i = 1; i < lines.length; i++) {
         if (!lines[i]) continue;
         const data = lines[i].split(',');
-        const type = data[idx.type]?.trim();
-        if (type !== 'Intäkt' && type !== 'Utgift') continue;
-        const amount = parseFloat(data[idx.amount]?.replace(/"/g, '').replace(/\s/g, '').replace(',', '.'));
+        const type = data[idx.type]?.trim().toLowerCase();
+        
+        if (type !== 'intäkt' && type !== 'utgift') continue;
+        
+        const amountStr = data[idx.amount]?.replace(/"/g, '').replace(/\s/g, '').replace(',', '.');
+        const amount = parseFloat(amountStr);
+
         if (isNaN(amount)) continue;
-        transactions.push({ date: data[idx.date]?.trim(), type: type, description: data[idx.description]?.trim(), party: data[idx.party]?.trim() || '', amount: Math.abs(amount), id: `import-${i}` });
+
+        transactions.push({
+            date: data[idx.date]?.trim(),
+            type: type.charAt(0).toUpperCase() + type.slice(1), // 'Intäkt' or 'Utgift'
+            description: data[idx.description]?.trim(),
+            party: data[idx.party]?.trim() || '',
+            amount: Math.abs(amount),
+            id: `import-${i}`
+        });
     }
     return transactions;
 }
@@ -891,16 +988,14 @@ async function saveCompanyInfo() {
     const newName = document.getElementById('setting-company').value;
     if (!newName) return;
     try {
-        // Uppdatera både företagsdokumentet och användarens companyName
         await updateDoc(doc(db, 'companies', currentCompany.id), { name: newName });
         await updateDoc(doc(db, 'users', currentUser.uid), { companyName: newName });
         
-        // Uppdatera lokala data
         currentCompany.name = newName;
         userData.companyName = newName;
         
         updateProfileIcon();
-        setupCompanySelector(); // Uppdatera namnet i dropdown
+        setupCompanySelector();
         showToast('Företagsinformationen är sparad!', 'success');
     } catch (error) {
         console.error("Fel vid sparning:", error);
@@ -911,8 +1006,6 @@ async function saveCompanyInfo() {
 async function deleteAccount() {
     if (prompt("Är du helt säker? Detta raderar ditt användarkonto men inte företagsdatan om andra medlemmar finns. Skriv 'RADERA' för att bekräfta.") === 'RADERA') {
         try {
-            // Här bör man lägga till logik för att hantera borttagning av företag om man är sista medlemmen etc.
-            // För nuvarande, raderar vi bara användarkontot.
             await deleteDoc(doc(db, 'users', currentUser.uid));
             await auth.currentUser.delete();
             showToast("Ditt konto har tagits bort.", "info");
@@ -924,161 +1017,8 @@ async function deleteAccount() {
     }
 }
 
-// ----- ÖVERSIKT ALLA FÖRETAG -----
-async function renderAllCompaniesDashboard() {
-    const mainView = document.getElementById('main-view');
-    
-    // Dölj företagsväljaren på denna sida
-    document.getElementById('company-selector').style.display = 'none';
-    
-    mainView.innerHTML = '<div class="loading">Laddar data från alla företag...</div>';
-    
-    try {
-        const companiesData = await Promise.all(
-            userCompanies.map(async (company) => {
-                const companyId = company.id;
-                
-                // Hämta data för varje företag
-                const [incomesSnap, expensesSnap, productsSnap] = await Promise.all([
-                    getDocs(query(collection(db, 'incomes'), where('companyId', '==', companyId))),
-                    getDocs(query(collection(db, 'expenses'), where('companyId', '==', companyId))),
-                    getDocs(query(collection(db, 'products'), where('companyId', '==', companyId)))
-                ]);
-                
-                const incomes = incomesSnap.docs.map(d => d.data());
-                const expenses = expensesSnap.docs.map(d => d.data());
-                const products = productsSnap.docs.map(d => d.data());
-                
-                const totalIncome = incomes.reduce((sum, income) => sum + (income.amount || 0), 0);
-                const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-                const netProfit = totalIncome - totalExpenses;
-                const productCount = products.length;
-                const totalStock = products.reduce((sum, product) => sum + (product.stock || 0), 0);
-                
-                return {
-                    ...company,
-                    totalIncome,
-                    totalExpenses,
-                    netProfit,
-                    productCount,
-                    totalStock,
-                    transactionCount: incomes.length + expenses.length
-                };
-            })
-        );
-        
-        // Beräkna totaler
-        const grandTotals = companiesData.reduce((totals, company) => ({
-            totalIncome: totals.totalIncome + company.totalIncome,
-            totalExpenses: totals.totalExpenses + company.totalExpenses,
-            netProfit: totals.netProfit + company.netProfit,
-            productCount: totals.productCount + company.productCount,
-            totalStock: totals.totalStock + company.totalStock,
-            transactionCount: totals.transactionCount + company.transactionCount
-        }), { totalIncome: 0, totalExpenses: 0, netProfit: 0, productCount: 0, totalStock: 0, transactionCount: 0 });
-        
-        const dashboardHtml = `
-            <div class="dashboard-grid">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Sammanfattning Alla Företag</h3>
-                    </div>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-value">${userCompanies.length}</div>
-                            <div class="stat-label">Företag</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${grandTotals.totalIncome.toLocaleString('sv-SE')} kr</div>
-                            <div class="stat-label">Total Intäkter</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${grandTotals.totalExpenses.toLocaleString('sv-SE')} kr</div>
-                            <div class="stat-label">Total Utgifter</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value ${grandTotals.netProfit >= 0 ? 'positive' : 'negative'}">${grandTotals.netProfit.toLocaleString('sv-SE')} kr</div>
-                            <div class="stat-label">Nettovinst</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${grandTotals.productCount}</div>
-                            <div class="stat-label">Produkter</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${grandTotals.transactionCount}</div>
-                            <div class="stat-label">Transaktioner</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Företagsdetaljer</h3>
-                    </div>
-                    <div class="table-container">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Företag</th>
-                                    <th>Roll</th>
-                                    <th>Intäkter</th>
-                                    <th>Utgifter</th>
-                                    <th>Nettovinst</th>
-                                    <th>Produkter</th>
-                                    <th>Åtgärder</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${companiesData.map(company => `
-                                    <tr>
-                                        <td><strong>${company.name}</strong></td>
-                                        <td>
-                                            <span class="badge ${company.role === 'owner' ? 'badge-success' : 'badge-info'}">
-                                                ${company.role === 'owner' ? 'Ägare' : 'Medlem'}
-                                            </span>
-                                        </td>
-                                        <td>${company.totalIncome.toLocaleString('sv-SE')} kr</td>
-                                        <td>${company.totalExpenses.toLocaleString('sv-SE')} kr</td>
-                                        <td class="${company.netProfit >= 0 ? 'positive' : 'negative'}">
-                                            ${company.netProfit.toLocaleString('sv-SE')} kr
-                                        </td>
-                                        <td>${company.productCount}</td>
-                                        <td>
-                                            <button class="btn btn-sm btn-primary" onclick="switchToCompany('${company.id}')">Växla till</button>
-                                            ${company.role === 'owner' ? `<button class="btn btn-sm btn-secondary" onclick="manageCompany('${company.id}')">Hantera</button>` : ''}
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        mainView.innerHTML = dashboardHtml;
-        
-    } catch (error) {
-        console.error('Fel vid hämtning av företagsdata:', error);
-        mainView.innerHTML = '<div class="card"><div class="error-message">Kunde inte ladda företagsdata.</div></div>';
-    }
-}
-
-window.switchToCompany = (companyId) => {
-    const companySelector = document.getElementById('company-selector');
-    companySelector.value = companyId;
-    // Skapa och avfyra ett 'change' event för att trigga logiken för företagsbyte
-    companySelector.dispatchEvent(new Event('change'));
-    // Navigera till översikten för det valda företaget
-    navigateTo('Översikt');
-}
-
-window.manageCompany = (companyId) => {
-    // Implementera företagshantering (bjuda in användare, etc.)
-    showToast('Företagshantering kommer snart!', 'info');
-}
-
 // ----- PRODUKTHANTERING -----
+// (All produktkod är oförändrad och ska finnas här)
 function renderProductsPage() {
     const mainView = document.getElementById('main-view');
     
@@ -1140,7 +1080,6 @@ function renderProductsPage() {
     
     mainView.innerHTML = searchHtml + productsHtml;
     
-    // Event listeners
     document.getElementById('product-search').addEventListener('input', filterProducts);
     document.getElementById('import-mtg-btn').addEventListener('click', showMTGImportModal);
 }
