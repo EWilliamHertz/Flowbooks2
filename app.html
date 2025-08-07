@@ -1,4 +1,3 @@
-app.html
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -7,18 +6,18 @@ app.html
     <title>Dashboard | FlowBooks</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- API-skript för Google Drive/Picker -->
     <script src="https://apis.google.com/js/api.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
+    <!-- App-containern är initialt dold för att undvika att orenderat innehåll visas -->
     <div id="app-container" style="visibility: hidden;">
         <aside class="sidebar">
             <div class="sidebar-header"><h2 class="logo">FlowBooks</h2></div>
             <nav class="sidebar-nav">
                 <ul>
                     <li><a href="#" class="active" data-page="Översikt">Översikt</a></li>
-                    <li><a href="#" data-page="Översikt Alla Företag">Översikt Alla Företag</a></li>
+                    <li><a href="#" data-page="Översikt Alla Företag">Företagsportal</a></li>
                     <li><a href="#" data-page="Sammanfattning">Sammanfattning</a></li>
                     <li><a href="#" data-page="Fakturor">Fakturor</a></li>
                     <li><a href="#" data-page="Intäkter">Intäkter</a></li>
@@ -28,7 +27,6 @@ app.html
                     <li><a href="#" data-page="Team">Team</a></li>
                     <li><a href="#" data-page="Rapporter">Rapporter</a></li>
                     <li><a href="#" data-page="Importera">Importera Data</a></li>
-                    <li><a href="#" data-page="Kategorier">Kategorier</a></li>
                     <li><a href="#" data-page="Inställningar">Inställningar</a></li>
                 </ul>
             </nav>
@@ -63,9 +61,11 @@ app.html
         </div>
     </div>
 
+    <!-- Behållare för modaler och notiser -->
     <div id="modal-container"></div>
     <div id="toast-container"></div>
     
-    <script src="app.js" type="module"></script>
+    <!-- Ladda huvud-JavaScript-filen som en modul -->
+    <script src="js/app.js" type="module"></script>
 </body>
 </html>
