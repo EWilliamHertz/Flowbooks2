@@ -1,5 +1,5 @@
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
-import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy, writeBatch, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+import { doc, getDoc, collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, orderBy, writeBatch, serverTimestamp, documentId, runTransaction } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-storage.js";
 import { auth, db, storage } from './firebase-config.js';
 
@@ -58,7 +58,7 @@ function main() {
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
             if (userDocSnap.exists() && userDocSnap.data().companyId) {
-                userData = userDocSnap.data();
+                userData = { id: userDocSnap.id, ...userDocSnap.data() };
                 await fetchAllCompanyData();
                 initializeAppUI();
             } else {
@@ -70,28 +70,39 @@ function main() {
     });
 }
 
+// KORRIGERAD FUNKTION FÖR DATAFRÅGOR
 async function fetchAllCompanyData() {
     try {
         const companyId = userData.companyId;
-        const incomeQuery = query(collection(db, 'incomes'), where('companyId', '==', companyId));
-        const expenseQuery = query(collection(db, 'expenses'), where('companyId', '==', companyId));
-        const recurringQuery = query(collection(db, 'recurring'), where('companyId', '==', companyId));
-        const categoryQuery = query(collection(db, 'categories'), where('companyId', '==', companyId), orderBy('name'));
-        const teamQuery = query(collection(db, 'users'), where('companyId', '==', companyId));
+
+        // Steg 1: Hämta företagsdokumentet för att få listan över medlems-UIDs
+        const companyRef = doc(db, 'companies', companyId);
+        const companySnap = await getDoc(companyRef);
+        const memberUIDs = companySnap.exists() && companySnap.data().members ? companySnap.data().members : [currentUser.uid];
+
+        // Steg 2: Förbered alla databasfrågor
+        const queries = [
+            getDocs(query(collection(db, 'incomes'), where('companyId', '==', companyId))),
+            getDocs(query(collection(db, 'expenses'), where('companyId', '==', companyId))),
+            getDocs(query(collection(db, 'recurring'), where('companyId', '==', companyId))),
+            getDocs(query(collection(db, 'categories'), where('companyId', '==', companyId), orderBy('name')))
+        ];
+
+        // Lägg bara till team-frågan om det finns medlemmar att hämta
+        if (memberUIDs.length > 0) {
+            queries.push(getDocs(query(collection(db, 'users'), where(documentId(), 'in', memberUIDs))));
+        }
+
+        // Steg 3: Kör alla frågor parallellt
+        const results = await Promise.all(queries);
         
-        const [incomeSnapshot, expenseSnapshot, recurringSnapshot, categorySnapshot, teamSnapshot] = await Promise.all([
-            getDocs(incomeQuery), 
-            getDocs(expenseQuery),
-            getDocs(recurringQuery),
-            getDocs(categoryQuery),
-            getDocs(teamQuery)
-        ]);
-        
-        allIncomes = incomeSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        allExpenses = expenseSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        recurringTransactions = recurringSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        categories = categorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        teamMembers = teamSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Steg 4: Mappa alla resultat till globala variabler
+        allIncomes = results[0].docs.map(d => ({ id: d.id, ...d.data() }));
+        allExpenses = results[1].docs.map(d => ({ id: d.id, ...d.data() }));
+        recurringTransactions = results[2].docs.map(d => ({ id: d.id, ...d.data() }));
+        categories = results[3].docs.map(d => ({ id: d.id, ...d.data() }));
+        // Kontrollera om team-frågan kördes
+        teamMembers = results.length > 4 ? results[4].docs.map(d => ({ id: d.id, ...d.data() })) : [];
         
         allTransactions = [
             ...allIncomes.map(t => ({ ...t, type: 'income' })),
@@ -99,10 +110,11 @@ async function fetchAllCompanyData() {
         ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     } catch (error) {
-        console.error("Kunde inte hämta företagsdata:", error);
+        console.error("Kunde inte ladda all företagsdata:", error);
         showToast("Kunde inte ladda all företagsdata.", "error");
     }
 }
+
 
 function initializeAppUI() {
     updateProfileIcon();
@@ -153,6 +165,7 @@ function renderPageContent(page) {
     switch (page) {
         case 'Översikt': renderDashboard(); break;
         case 'Sammanfattning': renderSummaryPage(); break;
+        case 'Fakturor': mainView.innerHTML = `<div class="card"><h3 class="card-title">Fakturor</h3><p>Denna sektion är under utveckling.</p></div>`; break;
         case 'Rapporter': mainView.innerHTML = `<div class="card"><h3 class="card-title">Rapporter</h3><p>Denna sektion är under utveckling.</p></div>`; break;
         case 'Importera': renderImportPage(); break;
         case 'Intäkter':
@@ -179,6 +192,9 @@ function renderPageContent(page) {
         default: mainView.innerHTML = `<div class="card"><h3 class="card-title">Sidan '${page}' hittades inte</h3></div>`;
     }
 }
+
+// Inkluderar resten av funktionerna... (Team, Kategorier, Återkommande, Transaktioner, etc.)
+// ... (Hela resten av filen är här, korrekt sammanfogad)
 
 // ----- TEAM -----
 function renderTeamPage() {
@@ -261,27 +277,12 @@ function renderTeamList() {
 // ----- KATEGORIER -----
 function renderCategoriesPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `
-        <div class="settings-grid">
-            <div class="card">
-                <h3 class="card-title">Mina Kategorier</h3>
-                <p>Lägg till och hantera kategorier för att organisera dina transaktioner.</p>
-                <div id="category-list-container" style="margin-top: 1.5rem;">${renderSpinner()}</div>
-            </div>
-            <div class="card">
-                <h3 class="card-title">Skapa Ny Kategori</h3>
-                <div class="input-group"><label for="new-category-name">Kategorinamn</label><input type="text" id="new-category-name" placeholder="T.ex. Kontorsmaterial"></div>
-                <button id="save-category-btn" class="btn btn-primary" style="margin-top: 1rem;">Spara Kategori</button>
-            </div>
-        </div>`;
+    mainView.innerHTML = `<div class="settings-grid"><div class="card"><h3 class="card-title">Mina Kategorier</h3><p>Lägg till och hantera kategorier för dina transaktioner.</p><div id="category-list-container" style="margin-top: 1.5rem;">${renderSpinner()}</div></div><div class="card"><h3 class="card-title">Skapa Ny Kategori</h3><div class="input-group"><label for="new-category-name">Kategorinamn</label><input type="text" id="new-category-name" placeholder="T.ex. Kontorsmaterial"></div><button id="save-category-btn" class="btn btn-primary" style="margin-top: 1rem;">Spara Kategori</button></div></div>`;
     renderCategoryList();
     document.getElementById('save-category-btn').addEventListener('click', async () => {
         const nameInput = document.getElementById('new-category-name');
         const name = nameInput.value.trim();
-        if (!name) {
-            showToast('Ange ett namn för kategorin.', 'warning');
-            return;
-        }
+        if (!name) { showToast('Ange ett namn för kategorin.', 'warning'); return; }
         try {
             await addDoc(collection(db, 'categories'), { name, companyId: userData.companyId, createdAt: serverTimestamp() });
             showToast('Kategori sparad!', 'success');
@@ -302,16 +303,12 @@ function renderCategoryList() {
         container.innerHTML = '<p>Du har inte skapat några kategorier än.</p>';
         return;
     }
-    const categoryItems = categories.map(cat => `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);">
-            <span>${cat.name}</span>
-            <button class="btn btn-danger" data-id="${cat.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Ta bort</button>
-        </div>`).join('');
+    const categoryItems = categories.map(cat => `<div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid var(--border-color);"><span>${cat.name}</span><button class="btn btn-danger" data-id="${cat.id}" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Ta bort</button></div>`).join('');
     container.innerHTML = categoryItems;
     container.querySelectorAll('.btn-danger').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const id = e.target.dataset.id;
-            if (confirm('Är du säker? Kategorin försvinner från alla kopplade transaktioner.')) {
+            if (confirm('Är du säker?')) {
                 try {
                     await deleteDoc(doc(db, 'categories', id));
                     showToast('Kategori borttagen.', 'success');
@@ -330,16 +327,7 @@ function renderCategoryList() {
 // ----- ÅTERKOMMANDE TRANSAKTIONER -----
 function renderRecurringPage() {
     const mainView = document.getElementById('main-view');
-    mainView.innerHTML = `
-        <div class="card">
-            <h3 class="card-title">Hantering av Återkommande Transaktioner</h3>
-            <p>Schemalagda intäkter och utgifter som skapas automatiskt varje månad.</p>
-            <button id="run-recurring-btn" class="btn btn-secondary" style="margin-top: 1rem;">Simulera månadskörning</button>
-        </div>
-        <div class="card" style="margin-top: 1.5rem;">
-            <h3 class="card-title">Mina Återkommande Transaktioner</h3>
-            <div id="recurring-list-container">${renderSpinner()}</div>
-        </div>`;
+    mainView.innerHTML = `<div class="card"><h3>Hantering av Återkommande Transaktioner</h3><p>Schemalagda intäkter och utgifter som skapas automatiskt.</p><button id="run-recurring-btn" class="btn btn-secondary" style="margin-top: 1rem;">Simulera månadskörning</button></div><div class="card" style="margin-top: 1.5rem;"><h3>Mina Återkommande Transaktioner</h3><div id="recurring-list-container">${renderSpinner()}</div></div>`;
     document.getElementById('run-recurring-btn').addEventListener('click', runRecurringTransactions);
     renderRecurringList();
 }
@@ -347,16 +335,7 @@ function renderRecurringPage() {
 function renderRecurringList() {
     const container = document.getElementById('recurring-list-container');
     if (!container) return;
-    const rows = recurringTransactions.map(item => `
-        <tr>
-            <td>${item.type === 'income' ? 'Intäkt' : 'Utgift'}</td>
-            <td>${item.description}</td>
-            <td>${item.party || ''}</td>
-            <td class="text-right ${item.type === 'income' ? 'green' : 'red'}">${Number(item.amount).toFixed(2)} kr</td>
-            <td>Varje månad</td>
-            <td>${item.nextDueDate}</td>
-            <td><button class="btn btn-danger" data-id="${item.id}" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">Ta bort</button></td>
-        </tr>`).join('');
+    const rows = recurringTransactions.map(item => `<tr><td>${item.type === 'income' ? 'Intäkt' : 'Utgift'}</td><td>${item.description}</td><td>${item.party || ''}</td><td class="text-right ${item.type === 'income' ? 'green' : 'red'}">${Number(item.amount).toFixed(2)} kr</td><td>Varje månad</td><td>${item.nextDueDate}</td><td><button class="btn btn-danger" data-id="${item.id}" style="padding: 0.3rem 0.6rem; font-size: 0.85rem;">Ta bort</button></td></tr>`).join('');
     container.innerHTML = `<table class="data-table"><thead><tr><th>Typ</th><th>Beskrivning</th><th>Motpart</th><th class="text-right">Summa</th><th>Frekvens</th><th>Nästa Datum</th><th>Åtgärd</th></tr></thead><tbody>${rows.length > 0 ? rows : `<tr><td colspan="7" class="text-center">Du har inga återkommande transaktioner.</td></tr>`}</tbody></table>`;
     container.querySelectorAll('.btn-danger').forEach(btn => {
         btn.addEventListener('click', async (e) => {
@@ -366,10 +345,10 @@ function renderRecurringList() {
                     await deleteDoc(doc(db, 'recurring', id));
                     await fetchAllCompanyData();
                     renderRecurringList();
-                    showToast('Återkommande transaktion borttagen.', 'success');
+                    showToast('Borttagen.', 'success');
                 } catch (error) {
                     console.error("Kunde inte ta bort:", error);
-                    showToast('Kunde inte ta bort.', 'error');
+                    showToast('Ett fel uppstod.', 'error');
                 }
             }
         });
@@ -409,10 +388,7 @@ function renderRecurringTransactionForm() {
 async function runRecurringTransactions() {
     const todayStr = new Date().toISOString().slice(0, 10);
     const transactionsToCreate = recurringTransactions.filter(item => item.nextDueDate && item.nextDueDate <= todayStr);
-    if (transactionsToCreate.length === 0) {
-        showToast("Inga återkommande transaktioner att generera idag.", "info");
-        return;
-    }
+    if (transactionsToCreate.length === 0) { showToast("Inga transaktioner att generera idag.", "info"); return; }
     const runBtn = document.getElementById('run-recurring-btn');
     runBtn.disabled = true;
     runBtn.textContent = 'Genererar...';
@@ -623,7 +599,6 @@ function showConfirmationModal(onConfirm, title, message) {
     document.getElementById('modal-cancel').onclick = () => { container.innerHTML = ''; };
 }
 
-// RESTEN AV FUNKTIONERNA (IMPORT, SETTINGS, ETC.)
 function initializeGisClient() {
     tokenClient = google.accounts.oauth2.initTokenClient({ client_id: GOOGLE_CLIENT_ID, scope: SCOPES, callback: '' });
 }
