@@ -20,6 +20,9 @@ let allTransactions = [];
 let recurringTransactions = [];
 let categories = [];
 let teamMembers = [];
+let allProducts = [];
+let userCompanies = [];
+let currentCompany = null;
 
 // ----- Funktion för Moderna Notiser (Toasts) -----
 function showToast(message, type = 'info') {
@@ -57,12 +60,19 @@ function main() {
             currentUser = user;
             const userDocRef = doc(db, 'users', user.uid);
             const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists() && userDocSnap.data().companyId) {
+            if (userDocSnap.exists()) {
                 userData = { id: userDocSnap.id, ...userDocSnap.data() };
-                await fetchAllCompanyData();
-                initializeAppUI();
+                await fetchUserCompanies();
+                if (userCompanies.length > 0) {
+                    // Sätt första företaget som aktivt om inget är valt
+                    currentCompany = userCompanies[0];
+                    await fetchAllCompanyData();
+                    initializeAppUI();
+                } else {
+                    showFatalError("Ditt konto är inte kopplat till något företag.");
+                }
             } else {
-                showFatalError("Ditt konto är inte korrekt kopplat till ett företag eller saknas i databasen.");
+                showFatalError("Ditt konto saknas i databasen.");
             }
         } else {
             window.location.href = 'login.html';
@@ -70,10 +80,52 @@ function main() {
     });
 }
 
+// HÄMTA ANVÄNDARENS FÖRETAG
+async function fetchUserCompanies() {
+    try {
+        // Hämta företag där användaren är ägare
+        const ownedCompaniesQuery = query(collection(db, 'companies'), where('ownerId', '==', currentUser.uid));
+        const ownedCompaniesSnap = await getDocs(ownedCompaniesQuery);
+        
+        // Hämta företag där användaren är medlem
+        const memberCompaniesQuery = query(collection(db, 'companies'), where('members', 'array-contains', currentUser.uid));
+        const memberCompaniesSnap = await getDocs(memberCompaniesQuery);
+        
+        const companies = new Map();
+        
+        // Lägg till ägda företag
+        ownedCompaniesSnap.docs.forEach(doc => {
+            companies.set(doc.id, { id: doc.id, ...doc.data(), role: 'owner' });
+        });
+        
+        // Lägg till företag där användaren är medlem
+        memberCompaniesSnap.docs.forEach(doc => {
+            if (!companies.has(doc.id)) {
+                companies.set(doc.id, { id: doc.id, ...doc.data(), role: 'member' });
+            }
+        });
+        
+        userCompanies = Array.from(companies.values());
+        
+        // Fallback: om inga företag hittades men userData har companyId, skapa företagsobjekt
+        if (userCompanies.length === 0 && userData.companyId) {
+            const companyRef = doc(db, 'companies', userData.companyId);
+            const companySnap = await getDoc(companyRef);
+            if (companySnap.exists()) {
+                userCompanies = [{ id: companySnap.id, ...companySnap.data(), role: 'member' }];
+            }
+        }
+        
+    } catch (error) {
+        console.error("Kunde inte hämta användarens företag:", error);
+        showToast("Kunde inte hämta företagsinformation.", "error");
+    }
+}
+
 // KORRIGERAD FUNKTION FÖR DATAFRÅGOR
 async function fetchAllCompanyData() {
     try {
-        const companyId = userData.companyId;
+        const companyId = currentCompany.id;
 
         // Steg 1: Hämta företagsdokumentet för att få listan över medlems-UIDs
         const companyRef = doc(db, 'companies', companyId);
@@ -85,7 +137,8 @@ async function fetchAllCompanyData() {
             getDocs(query(collection(db, 'incomes'), where('companyId', '==', companyId))),
             getDocs(query(collection(db, 'expenses'), where('companyId', '==', companyId))),
             getDocs(query(collection(db, 'recurring'), where('companyId', '==', companyId))),
-            getDocs(query(collection(db, 'categories'), where('companyId', '==', companyId), orderBy('name')))
+            getDocs(query(collection(db, 'categories'), where('companyId', '==', companyId), orderBy('name'))),
+            getDocs(query(collection(db, 'products'), where('companyId', '==', companyId), orderBy('name')))
         ];
 
         // Lägg bara till team-frågan om det finns medlemmar att hämta
@@ -101,8 +154,9 @@ async function fetchAllCompanyData() {
         allExpenses = results[1].docs.map(d => ({ id: d.id, ...d.data() }));
         recurringTransactions = results[2].docs.map(d => ({ id: d.id, ...d.data() }));
         categories = results[3].docs.map(d => ({ id: d.id, ...d.data() }));
+        allProducts = results[4].docs.map(d => ({ id: d.id, ...d.data() }));
         // Kontrollera om team-frågan kördes
-        teamMembers = results.length > 4 ? results[4].docs.map(d => ({ id: d.id, ...d.data() })) : [];
+        teamMembers = results.length > 5 ? results[5].docs.map(d => ({ id: d.id, ...d.data() })) : [];
         
         allTransactions = [
             ...allIncomes.map(t => ({ ...t, type: 'income' })),
@@ -118,9 +172,36 @@ async function fetchAllCompanyData() {
 
 function initializeAppUI() {
     updateProfileIcon();
+    setupCompanySelector();
     setupEventListeners();
     navigateTo('Översikt');
     document.getElementById('app-container').style.visibility = 'visible';
+}
+
+function setupCompanySelector() {
+    const selector = document.getElementById('company-selector');
+    
+    // Fyll företagsväljaren
+    selector.innerHTML = userCompanies.map(company => 
+        `<option value="${company.id}" ${company.id === currentCompany.id ? 'selected' : ''}>
+            ${company.name} ${company.role === 'owner' ? '(Ägare)' : '(Medlem)'}
+        </option>`
+    ).join('');
+    
+    // Lägg till event listener för företagsbyte
+    selector.addEventListener('change', async (e) => {
+        const selectedCompanyId = e.target.value;
+        currentCompany = userCompanies.find(c => c.id === selectedCompanyId);
+        await fetchAllCompanyData();
+        
+        // Uppdatera sidan om vi inte är på översiktssidan för alla företag
+        const currentPage = document.querySelector('.page-title').textContent;
+        if (currentPage !== 'Översikt Alla Företag') {
+            renderPageContent(currentPage);
+        }
+        
+        showToast(`Bytte till ${currentCompany.name}`, 'success');
+    });
 }
 
 function setupEventListeners() {
@@ -148,6 +229,15 @@ function navigateTo(page) {
     document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
     const link = document.querySelector(`.sidebar-nav a[data-page="${page}"]`);
     if (link) link.classList.add('active');
+    
+    // Visa företagsväljaren på alla sidor utom "Översikt Alla Företag"
+    const companySelector = document.getElementById('company-selector');
+    if (page === 'Översikt Alla Företag') {
+        companySelector.style.display = 'none';
+    } else {
+        companySelector.style.display = 'block';
+    }
+    
     renderPageContent(page);
     document.querySelector('.sidebar').classList.remove('open');
 }
@@ -164,6 +254,7 @@ function renderPageContent(page) {
 
     switch (page) {
         case 'Översikt': renderDashboard(); break;
+        case 'Översikt Alla Företag': renderAllCompaniesDashboard(); break;
         case 'Sammanfattning': renderSummaryPage(); break;
         case 'Fakturor': mainView.innerHTML = `<div class="card"><h3 class="card-title">Fakturor</h3><p>Denna sektion är under utveckling.</p></div>`; break;
         case 'Rapporter': mainView.innerHTML = `<div class="card"><h3 class="card-title">Rapporter</h3><p>Denna sektion är under utveckling.</p></div>`; break;
@@ -185,6 +276,12 @@ function renderPageContent(page) {
             newItemBtn.style.display = 'block';
             newItemBtn.onclick = () => renderRecurringTransactionForm();
             renderRecurringPage();
+            break;
+        case 'Produkter':
+            newItemBtn.textContent = 'Ny Produkt';
+            newItemBtn.style.display = 'block';
+            newItemBtn.onclick = () => renderProductForm();
+            renderProductsPage();
             break;
         case 'Kategorier': renderCategoriesPage(); break;
         case 'Team': renderTeamPage(); break;
@@ -802,6 +899,610 @@ async function deleteAccount() {
             showToast("Kunde inte ta bort kontot. Logga ut och in igen.", "error");
         }
     }
+}
+
+// ----- ÖVERSIKT ALLA FÖRETAG -----
+async function renderAllCompaniesDashboard() {
+    const mainView = document.getElementById('main-view');
+    
+    // Dölj företagsväljaren på denna sida
+    document.getElementById('company-selector').style.display = 'none';
+    
+    mainView.innerHTML = '<div class="loading">Laddar data från alla företag...</div>';
+    
+    try {
+        const companiesData = await Promise.all(
+            userCompanies.map(async (company) => {
+                const companyId = company.id;
+                
+                // Hämta data för varje företag
+                const [incomesSnap, expensesSnap, productsSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'incomes'), where('companyId', '==', companyId))),
+                    getDocs(query(collection(db, 'expenses'), where('companyId', '==', companyId))),
+                    getDocs(query(collection(db, 'products'), where('companyId', '==', companyId)))
+                ]);
+                
+                const incomes = incomesSnap.docs.map(d => d.data());
+                const expenses = expensesSnap.docs.map(d => d.data());
+                const products = productsSnap.docs.map(d => d.data());
+                
+                const totalIncome = incomes.reduce((sum, income) => sum + (income.amount || 0), 0);
+                const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+                const netProfit = totalIncome - totalExpenses;
+                const productCount = products.length;
+                const totalStock = products.reduce((sum, product) => sum + (product.stock || 0), 0);
+                
+                return {
+                    ...company,
+                    totalIncome,
+                    totalExpenses,
+                    netProfit,
+                    productCount,
+                    totalStock,
+                    transactionCount: incomes.length + expenses.length
+                };
+            })
+        );
+        
+        // Beräkna totaler
+        const grandTotals = companiesData.reduce((totals, company) => ({
+            totalIncome: totals.totalIncome + company.totalIncome,
+            totalExpenses: totals.totalExpenses + company.totalExpenses,
+            netProfit: totals.netProfit + company.netProfit,
+            productCount: totals.productCount + company.productCount,
+            totalStock: totals.totalStock + company.totalStock,
+            transactionCount: totals.transactionCount + company.transactionCount
+        }), { totalIncome: 0, totalExpenses: 0, netProfit: 0, productCount: 0, totalStock: 0, transactionCount: 0 });
+        
+        const dashboardHtml = `
+            <div class="dashboard-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Sammanfattning Alla Företag</h3>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value">${userCompanies.length}</div>
+                            <div class="stat-label">Företag</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${grandTotals.totalIncome.toLocaleString('sv-SE')} kr</div>
+                            <div class="stat-label">Total Intäkter</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${grandTotals.totalExpenses.toLocaleString('sv-SE')} kr</div>
+                            <div class="stat-label">Total Utgifter</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value ${grandTotals.netProfit >= 0 ? 'positive' : 'negative'}">${grandTotals.netProfit.toLocaleString('sv-SE')} kr</div>
+                            <div class="stat-label">Nettovinst</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${grandTotals.productCount}</div>
+                            <div class="stat-label">Produkter</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">${grandTotals.transactionCount}</div>
+                            <div class="stat-label">Transaktioner</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Företagsdetaljer</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Företag</th>
+                                    <th>Roll</th>
+                                    <th>Intäkter</th>
+                                    <th>Utgifter</th>
+                                    <th>Nettovinst</th>
+                                    <th>Produkter</th>
+                                    <th>Åtgärder</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${companiesData.map(company => `
+                                    <tr>
+                                        <td><strong>${company.name}</strong></td>
+                                        <td>
+                                            <span class="badge ${company.role === 'owner' ? 'badge-success' : 'badge-info'}">
+                                                ${company.role === 'owner' ? 'Ägare' : 'Medlem'}
+                                            </span>
+                                        </td>
+                                        <td>${company.totalIncome.toLocaleString('sv-SE')} kr</td>
+                                        <td>${company.totalExpenses.toLocaleString('sv-SE')} kr</td>
+                                        <td class="${company.netProfit >= 0 ? 'positive' : 'negative'}">
+                                            ${company.netProfit.toLocaleString('sv-SE')} kr
+                                        </td>
+                                        <td>${company.productCount}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary" onclick="switchToCompany('${company.id}')">Växla till</button>
+                                            ${company.role === 'owner' ? `<button class="btn btn-sm btn-secondary" onclick="manageCompany('${company.id}')">Hantera</button>` : ''}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        mainView.innerHTML = dashboardHtml;
+        
+    } catch (error) {
+        console.error('Fel vid hämtning av företagsdata:', error);
+        mainView.innerHTML = '<div class="card"><div class="error-message">Kunde inte ladda företagsdata.</div></div>';
+    }
+}
+
+function switchToCompany(companyId) {
+    currentCompany = userCompanies.find(c => c.id === companyId);
+    document.getElementById('company-selector').value = companyId;
+    document.getElementById('company-selector').style.display = 'block';
+    navigateTo('Översikt');
+}
+
+function manageCompany(companyId) {
+    // Implementera företagshantering (bjuda in användare, etc.)
+    showToast('Företagshantering kommer snart!', 'info');
+}
+
+// ----- PRODUKTHANTERING -----
+function renderProductsPage() {
+    const mainView = document.getElementById('main-view');
+    
+    const searchHtml = `
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Produkter</h3>
+                <div class="search-controls">
+                    <input type="text" id="product-search" placeholder="Sök produkter..." class="form-input">
+                    <button id="import-mtg-btn" class="btn btn-secondary">Importera MTG-kort</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const productsHtml = allProducts.length > 0 ? 
+        `<div class="card">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Bild</th>
+                            <th>Namn</th>
+                            <th>Typ</th>
+                            <th>Pris</th>
+                            <th>Lager</th>
+                            <th>Åtgärder</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${allProducts.map(product => `
+                            <tr>
+                                <td>
+                                    ${product.imageUrl ? 
+                                        `<img src="${product.imageUrl}" alt="${product.name}" style="width: 40px; height: 56px; object-fit: cover; border-radius: 4px;">` : 
+                                        '<div style="width: 40px; height: 56px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 12px;">Ingen bild</div>'
+                                    }
+                                </td>
+                                <td><strong>${product.name}</strong></td>
+                                <td>${product.type || 'Okänd'}</td>
+                                <td>${product.price ? product.price + ' kr' : 'Ej satt'}</td>
+                                <td>${product.stock || 0}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="editProduct('${product.id}')">Redigera</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteProduct('${product.id}')">Ta bort</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>` : 
+        `<div class="card">
+            <div class="empty-state">
+                <h3>Inga produkter ännu</h3>
+                <p>Lägg till din första produkt eller importera Magic the Gathering-kort.</p>
+            </div>
+        </div>`;
+    
+    mainView.innerHTML = searchHtml + productsHtml;
+    
+    // Event listeners
+    document.getElementById('product-search').addEventListener('input', filterProducts);
+    document.getElementById('import-mtg-btn').addEventListener('click', showMTGImportModal);
+}
+
+function filterProducts() {
+    const searchTerm = document.getElementById('product-search').value.toLowerCase();
+    const rows = document.querySelectorAll('.data-table tbody tr');
+    
+    rows.forEach(row => {
+        const productName = row.querySelector('td:nth-child(2)').textContent.toLowerCase();
+        const productType = row.querySelector('td:nth-child(3)').textContent.toLowerCase();
+        
+        if (productName.includes(searchTerm) || productType.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function renderProductForm(productId = null) {
+    const product = productId ? allProducts.find(p => p.id === productId) : null;
+    const isEdit = !!product;
+    
+    const modalHtml = `
+        <div class="modal-overlay" onclick="closeModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>${isEdit ? 'Redigera Produkt' : 'Ny Produkt'}</h3>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
+                <form id="product-form" class="modal-body">
+                    <div class="form-group">
+                        <label for="product-name">Produktnamn *</label>
+                        <input type="text" id="product-name" class="form-input" value="${product?.name || ''}" required>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="product-type">Typ</label>
+                            <select id="product-type" class="form-input">
+                                <option value="MTG Card" ${product?.type === 'MTG Card' ? 'selected' : ''}>Magic the Gathering-kort</option>
+                                <option value="Board Game" ${product?.type === 'Board Game' ? 'selected' : ''}>Brädspel</option>
+                                <option value="Accessory" ${product?.type === 'Accessory' ? 'selected' : ''}>Tillbehör</option>
+                                <option value="Other" ${product?.type === 'Other' ? 'selected' : ''}>Övrigt</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-price">Pris (kr)</label>
+                            <input type="number" id="product-price" class="form-input" step="0.01" value="${product?.price || ''}">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="product-stock">Lager</label>
+                            <input type="number" id="product-stock" class="form-input" value="${product?.stock || 0}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="product-sku">SKU/Artikelnummer</label>
+                            <input type="text" id="product-sku" class="form-input" value="${product?.sku || ''}">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="product-description">Beskrivning</label>
+                        <textarea id="product-description" class="form-input" rows="3">${product?.description || ''}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="product-image-url">Bild-URL</label>
+                        <input type="url" id="product-image-url" class="form-input" value="${product?.imageUrl || ''}" placeholder="https://...">
+                        <small class="form-help">För MTG-kort hämtas bilder automatiskt från Scryfall</small>
+                    </div>
+                    
+                    ${product?.mtgData ? `
+                        <div class="form-group">
+                            <label>Magic the Gathering Data</label>
+                            <div class="mtg-data-display">
+                                <p><strong>Mana Cost:</strong> ${product.mtgData.mana_cost || 'N/A'}</p>
+                                <p><strong>Type:</strong> ${product.mtgData.type_line || 'N/A'}</p>
+                                <p><strong>Set:</strong> ${product.mtgData.set_name || 'N/A'}</p>
+                            </div>
+                        </div>
+                    ` : ''}
+                </form>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Avbryt</button>
+                    <button type="submit" form="product-form" class="btn btn-primary">${isEdit ? 'Uppdatera' : 'Skapa'}</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('modal-container').innerHTML = modalHtml;
+    
+    document.getElementById('product-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await saveProduct(productId);
+    });
+}
+
+async function saveProduct(productId = null) {
+    const productData = {
+        name: document.getElementById('product-name').value,
+        type: document.getElementById('product-type').value,
+        price: parseFloat(document.getElementById('product-price').value) || null,
+        stock: parseInt(document.getElementById('product-stock').value) || 0,
+        sku: document.getElementById('product-sku').value,
+        description: document.getElementById('product-description').value,
+        imageUrl: document.getElementById('product-image-url').value,
+        companyId: currentCompany.id,
+        updatedAt: serverTimestamp()
+    };
+    
+    try {
+        if (productId) {
+            await updateDoc(doc(db, 'products', productId), productData);
+            showToast('Produkten har uppdaterats!', 'success');
+        } else {
+            productData.createdAt = serverTimestamp();
+            await addDoc(collection(db, 'products'), productData);
+            showToast('Produkten har skapats!', 'success');
+        }
+        
+        await fetchAllCompanyData();
+        renderProductsPage();
+        closeModal();
+    } catch (error) {
+        console.error('Fel vid sparning av produkt:', error);
+        showToast('Kunde inte spara produkten.', 'error');
+    }
+}
+
+async function deleteProduct(productId) {
+    if (confirm('Är du säker på att du vill ta bort denna produkt?')) {
+        try {
+            await deleteDoc(doc(db, 'products', productId));
+            showToast('Produkten har tagits bort!', 'success');
+            await fetchAllCompanyData();
+            renderProductsPage();
+        } catch (error) {
+            console.error('Fel vid borttagning av produkt:', error);
+            showToast('Kunde inte ta bort produkten.', 'error');
+        }
+    }
+}
+
+function editProduct(productId) {
+    renderProductForm(productId);
+}
+
+function showMTGImportModal() {
+    const modalHtml = `
+        <div class="modal-overlay" onclick="closeModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h3>Importera Magic the Gathering-kort</h3>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="mtg-search">Sök efter kort</label>
+                        <input type="text" id="mtg-search" class="form-input" placeholder="Skriv kortnamn...">
+                        <button id="search-mtg-btn" class="btn btn-primary" style="margin-top: 10px;">Sök</button>
+                    </div>
+                    
+                    <div id="mtg-search-results" style="margin-top: 20px;"></div>
+                    
+                    <div class="form-group" style="margin-top: 20px;">
+                        <label for="google-sheets-url">Eller importera från Google Sheets</label>
+                        <input type="url" id="google-sheets-url" class="form-input" placeholder="https://docs.google.com/spreadsheets/...">
+                        <small class="form-help">Klistra in länken till ditt Google Sheets-dokument</small>
+                        <button id="import-sheets-btn" class="btn btn-secondary" style="margin-top: 10px;">Importera från Sheets</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Stäng</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('modal-container').innerHTML = modalHtml;
+    
+    document.getElementById('search-mtg-btn').addEventListener('click', searchMTGCards);
+    document.getElementById('import-sheets-btn').addEventListener('click', importFromGoogleSheets);
+}
+
+async function searchMTGCards() {
+    const searchTerm = document.getElementById('mtg-search').value.trim();
+    if (!searchTerm) return;
+    
+    const resultsDiv = document.getElementById('mtg-search-results');
+    resultsDiv.innerHTML = '<div class="loading">Söker kort...</div>';
+    
+    try {
+        const response = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(searchTerm)}`, {
+            headers: {
+                'User-Agent': 'FlowBooks/1.0',
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Kunde inte hämta kort från Scryfall');
+        }
+        
+        const data = await response.json();
+        
+        if (data.data && data.data.length > 0) {
+            const cardsHtml = data.data.slice(0, 10).map(card => `
+                <div class="mtg-card-result" style="display: flex; align-items: center; padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px;">
+                    <img src="${card.image_uris?.small || ''}" alt="${card.name}" style="width: 50px; height: 70px; object-fit: cover; margin-right: 15px;">
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 5px 0;">${card.name}</h4>
+                        <p style="margin: 0; color: #666; font-size: 14px;">${card.type_line}</p>
+                        <p style="margin: 0; color: #666; font-size: 14px;">${card.set_name} (${card.set})</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="importMTGCard('${card.id}')">Importera</button>
+                </div>
+            `).join('');
+            
+            resultsDiv.innerHTML = `<h4>Sökresultat:</h4>${cardsHtml}`;
+        } else {
+            resultsDiv.innerHTML = '<p>Inga kort hittades. Försök med ett annat sökord.</p>';
+        }
+    } catch (error) {
+        console.error('Fel vid sökning av MTG-kort:', error);
+        resultsDiv.innerHTML = '<p style="color: red;">Fel vid sökning. Försök igen senare.</p>';
+    }
+}
+
+async function importMTGCard(cardId) {
+    try {
+        const response = await fetch(`https://api.scryfall.com/cards/${cardId}`, {
+            headers: {
+                'User-Agent': 'FlowBooks/1.0',
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Kunde inte hämta kortdata');
+        }
+        
+        const card = await response.json();
+        
+        const productData = {
+            name: card.name,
+            type: 'MTG Card',
+            description: card.oracle_text || '',
+            imageUrl: card.image_uris?.normal || card.image_uris?.large || '',
+            sku: card.collector_number + '-' + card.set.toUpperCase(),
+            stock: 0,
+            price: null,
+            mtgData: {
+                scryfall_id: card.id,
+                mana_cost: card.mana_cost,
+                type_line: card.type_line,
+                set_name: card.set_name,
+                set: card.set,
+                collector_number: card.collector_number,
+                rarity: card.rarity
+            },
+            companyId: currentCompany.id,
+            createdAt: serverTimestamp()
+        };
+        
+        await addDoc(collection(db, 'products'), productData);
+        showToast(`${card.name} har importerats!`, 'success');
+        
+        await fetchAllCompanyData();
+        renderProductsPage();
+        closeModal();
+    } catch (error) {
+        console.error('Fel vid import av MTG-kort:', error);
+        showToast('Kunde inte importera kortet.', 'error');
+    }
+}
+
+async function importFromGoogleSheets() {
+    const sheetsUrl = document.getElementById('google-sheets-url').value.trim();
+    if (!sheetsUrl) {
+        showToast('Ange en Google Sheets-URL.', 'error');
+        return;
+    }
+    
+    // Extrahera sheet ID från URL
+    const sheetIdMatch = sheetsUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!sheetIdMatch) {
+        showToast('Ogiltig Google Sheets-URL.', 'error');
+        return;
+    }
+    
+    const sheetId = sheetIdMatch[1];
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+    
+    try {
+        const response = await fetch(csvUrl);
+        if (!response.ok) {
+            throw new Error('Kunde inte hämta data från Google Sheets');
+        }
+        
+        const csvText = await response.text();
+        const rows = csvText.split('\n').map(row => row.split(',').map(cell => cell.replace(/"/g, '').trim()));
+        
+        if (rows.length < 2) {
+            showToast('Inga data hittades i arket.', 'error');
+            return;
+        }
+        
+        const headers = rows[0];
+        const nameIndex = headers.findIndex(h => h.toLowerCase().includes('name') || h.toLowerCase().includes('namn'));
+        
+        if (nameIndex === -1) {
+            showToast('Kunde inte hitta en "name" eller "namn" kolumn.', 'error');
+            return;
+        }
+        
+        let importedCount = 0;
+        
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row[nameIndex] && row[nameIndex].trim()) {
+                const cardName = row[nameIndex].trim();
+                
+                // Försök hämta kort från Scryfall
+                try {
+                    const searchResponse = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`, {
+                        headers: {
+                            'User-Agent': 'FlowBooks/1.0',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    if (searchResponse.ok) {
+                        const card = await searchResponse.json();
+                        
+                        const productData = {
+                            name: card.name,
+                            type: 'MTG Card',
+                            description: card.oracle_text || '',
+                            imageUrl: card.image_uris?.normal || card.image_uris?.large || '',
+                            sku: card.collector_number + '-' + card.set.toUpperCase(),
+                            stock: 0,
+                            price: null,
+                            mtgData: {
+                                scryfall_id: card.id,
+                                mana_cost: card.mana_cost,
+                                type_line: card.type_line,
+                                set_name: card.set_name,
+                                set: card.set,
+                                collector_number: card.collector_number,
+                                rarity: card.rarity
+                            },
+                            companyId: currentCompany.id,
+                            createdAt: serverTimestamp()
+                        };
+                        
+                        await addDoc(collection(db, 'products'), productData);
+                        importedCount++;
+                        
+                        // Vänta lite mellan requests för att respektera rate limits
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                } catch (cardError) {
+                    console.warn(`Kunde inte importera kort: ${cardName}`, cardError);
+                }
+            }
+        }
+        
+        showToast(`${importedCount} kort har importerats från Google Sheets!`, 'success');
+        await fetchAllCompanyData();
+        renderProductsPage();
+        closeModal();
+        
+    } catch (error) {
+        console.error('Fel vid import från Google Sheets:', error);
+        showToast('Kunde inte importera från Google Sheets.', 'error');
+    }
+}
+
+function closeModal() {
+    document.getElementById('modal-container').innerHTML = '';
 }
 
 // Kör appen
