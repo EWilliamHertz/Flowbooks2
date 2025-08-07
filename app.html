@@ -1,3 +1,4 @@
+app.html
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -17,6 +18,7 @@
             <nav class="sidebar-nav">
                 <ul>
                     <li><a href="#" class="active" data-page="Översikt">Översikt</a></li>
+                    <li><a href="#" data-page="Översikt Alla Företag">Översikt Alla Företag</a></li>
                     <li><a href="#" data-page="Sammanfattning">Sammanfattning</a></li>
                     <li><a href="#" data-page="Fakturor">Fakturor</a></li>
                     <li><a href="#" data-page="Intäkter">Intäkter</a></li>
@@ -42,6 +44,11 @@
                     <h1 class="page-title">Översikt</h1>
                 </div>
                 <div class="header-right">
+                    <div class="company-selector" style="margin-right: 15px;">
+                        <select id="company-selector" class="form-input" style="min-width: 200px;">
+                            <!-- Fylls dynamiskt -->
+                        </select>
+                    </div>
                     <button id="new-item-btn" class="btn btn-primary" style="display: none;"></button>
                     <div class="profile-container">
                         <div id="user-profile-icon" class="user-profile"></div>
