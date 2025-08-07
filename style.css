@@ -107,9 +107,41 @@ main { padding: 1.5rem; }
 .spinner { width: 50px; height: 50px; border: 5px solid var(--background-color); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* --- 10. Responsiv Design & Hamburgermeny --- */
-.hamburger-menu { display: none; background: none; border: none; cursor: pointer; padding: 0.5rem; }
-.hamburger-menu .bar { display: block; width: 25px; height: 3px; background-color: var(--text-color); margin: 5px 0; transition: 0.3s; }
+//* --- 10. Responsiv Design & Hamburgermeny --- */
+.hamburger-menu { 
+    display: none; 
+    background: none; 
+    border: none; 
+    cursor: pointer; 
+    padding: 0.5rem; 
+    /* NYTT: Säkerställer att knappen ligger överst */
+    z-index: 1001; 
+}
+
+.hamburger-menu .bar { 
+    display: block; 
+    width: 25px; 
+    height: 3px; 
+    background-color: var(--text-color); 
+    margin: 5px 0; 
+    transition: 0.3s; 
+}
+
+@media (max-width: 768px) {
+    .sidebar { 
+        transform: translateX(-100%); 
+        /* NYTT: Högre z-index för att ligga över innehållet */
+        z-index: 1000;
+    }
+    .sidebar.open { 
+        transform: translateX(0); 
+        box-shadow: 0 0 20px rgba(0,0,0,0.2); 
+    }
+    .main-content { margin-left: 0; }
+    .hamburger-menu { display: block; }
+    .page-title { font-size: 1.2rem; }
+    .controls-container { flex-direction: column; align-items: stretch; }
+}
 
 @media (max-width: 768px) {
     .sidebar { transform: translateX(-100%); }
